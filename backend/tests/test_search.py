@@ -5,6 +5,8 @@ from ada.services.search import SearchService
 class _FakeJob:
     def __init__(self, title: str, company: str, location: str) -> None:
         self.title, self.company, self.location = title, company, location
+        self.id = 1
+        self.url = "https://example.com/job/1"
 
 
 class _FakeJobs:

@@ -23,6 +23,7 @@ dependencies = [
     "pypdf>=4.2",
     "python-docx>=1.1",
     "python-multipart>=0.0.9",
+    "playwright>=1.45",
 ]
 
 [project.optional-dependencies]
@@ -53,6 +54,10 @@ target-version = "py311"
 select = ["E", "F", "I", "UP", "B"]
 # B008: `Depends(...)` in defaults is the canonical FastAPI dependency pattern.
 ignore = ["B008"]
+
+[[tool.mypy.overrides]]
+module = "google.cloud.*"
+ignore_missing_imports = true
 
 [tool.mutmut]
 source_paths = [

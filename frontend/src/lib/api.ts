@@ -13,9 +13,11 @@ export interface CreateRunOut {
 }
 
 export interface Match {
+  job_id?: number | null;
   title: string;
   company: string;
   location: string;
+  url?: string | null;
   match: number;
   reason: string;
 }
@@ -68,7 +70,35 @@ export const RUN_STATUS: Record<
 export interface Profile {
   profile_text: string;
   linkedin_url: string | null;
+  full_name: string | null;
+  phone: string | null;
   updated_at: string;
+}
+
+export interface UploadedDoc {
+  id: number;
+  filename: string;
+  size_bytes: number;
+  archived: boolean;
+  created_at: string;
+}
+
+export interface UploadedDocDetail extends UploadedDoc {
+  cv_text: string;
+}
+
+export type ApplicationStatus = "preparing" | "submitted" | "needs_attention" | "failed";
+
+export interface ApplicationSummary {
+  id: string;
+  job_id: number;
+  title: string;
+  company: string;
+  location: string;
+  status: ApplicationStatus;
+  detail: string | null;
+  submitted_at: string | null;
+  created_at: string;
 }
 
 export interface ChatMessage {
@@ -159,6 +189,8 @@ export const api = {
     }),
 
   // documents
+  listDocuments: () => request<UploadedDoc[]>("/api/documents"),
+  getDocument: (id: number) => request<UploadedDocDetail>(`/api/documents/${id}`),
   uploadCv: async (file: File) => {
     const body = new FormData();
     body.append("file", file);
@@ -176,8 +208,26 @@ export const api = {
       }
       throw new ApiError(res.status, detail);
     }
-    return res.json() as Promise<{ cv_text: string; gcs_uri: string | null; filename: string }>;
+    return res.json() as Promise<{
+      id: number;
+      cv_text: string;
+      gcs_uri: string | null;
+      filename: string;
+    }>;
   },
+
+  // applications
+  applyToJob: (jobId: number, runId?: string) =>
+    request<{ application_id: string; status: ApplicationStatus; already_applied: boolean }>(
+      `/api/jobs/${jobId}/apply`,
+      { method: "POST", body: JSON.stringify({ run_id: runId ?? null }) },
+    ),
+  listApplications: () => request<ApplicationSummary[]>("/api/applications"),
+  putIdentity: (full_name: string, phone: string | null) =>
+    request<Profile>("/api/profile/identity", {
+      method: "PUT",
+      body: JSON.stringify({ full_name, phone }),
+    }),
 
   // profile
   getProfile: () => request<Profile | null>("/api/profile"),

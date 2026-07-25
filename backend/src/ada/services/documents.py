@@ -60,7 +60,7 @@ def _extract(filename: str, data: bytes) -> str:
     return text
 
 
-def _store(user_id: int, filename: str, data: bytes, content_type: str | None) -> str | None:
+def _store(user_id: str, filename: str, data: bytes, content_type: str | None) -> str | None:
     bucket_name = get_settings().gcs_bucket
     if not bucket_name:
         return None
@@ -75,7 +75,7 @@ def _store(user_id: int, filename: str, data: bytes, content_type: str | None) -
 
 
 async def process_cv_upload(
-    user_id: int, filename: str, data: bytes, content_type: str | None
+    user_id: str, filename: str, data: bytes, content_type: str | None
 ) -> tuple[str, str | None]:
     """Returns (extracted_text, gcs_uri). Raises UnsupportedDocument on bad input."""
     text = await asyncio.to_thread(_extract, filename, data)

@@ -10,6 +10,7 @@ Client frames:  {"type":"audio","data": <base64 pcm16@16k>}
                 {"type":"text","data": "..."}
                 {"type":"end"}
 Server frames:  {"type":"transcript","data": "..."} | {"type":"intake", ...}
+                {"type":"audio","data": <base64 pcm16@24k>} | {"type":"interrupt"}
                 | {"type":"error","message": "..."}
 """
 import asyncio
@@ -47,9 +48,15 @@ async def voice(ws: WebSocket) -> None:
 
             async def pump_out() -> None:
                 async for resp in session.receive():
+                    if resp.data:
+                        audio = base64.b64encode(resp.data).decode("ascii")
+                        await ws.send_json({"type": "audio", "data": audio})
                     sc = resp.server_content
                     if sc is None:
                         continue
+                    # Barge-in: the user spoke over Ada — tell the client to cut playback.
+                    if sc.interrupted:
+                        await ws.send_json({"type": "interrupt"})
                     if sc.input_transcription and sc.input_transcription.text:
                         await relay("You", sc.input_transcription.text)
                     if sc.output_transcription and sc.output_transcription.text:

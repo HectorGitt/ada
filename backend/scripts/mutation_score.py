@@ -16,7 +16,8 @@ FLOOR = float(os.environ.get("MIN_MUTATION_SCORE", "70"))
 
 
 def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, capture_output=True, text=True, check=False)  # noqa: S603
+    env = {**os.environ, "RUN_DB_TESTS": ""}
+    return subprocess.run(cmd, capture_output=True, text=True, check=False, env=env)  # noqa: S603
 
 
 def main() -> int:

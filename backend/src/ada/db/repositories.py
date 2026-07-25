@@ -14,7 +14,16 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ada.db.models import Job, ProcessedEvent, Profile, Run, RunStatus
+from ada.db.models import (
+    Application,
+    ApplicationStatus,
+    Job,
+    ProcessedEvent,
+    Profile,
+    Run,
+    RunStatus,
+    UploadedDocument,
+)
 
 # Filler words that carry no signal when matching a role name against job titles.
 _ROLE_STOPWORDS = {"a", "an", "and", "the", "of", "for", "in", "at", "to", "or"}
@@ -181,10 +190,31 @@ class ProfileRepository:
             raise RuntimeError(f"profile missing immediately after upsert for {user_id}")
         return profile
 
+    async def set_identity(
+        self, *, user_id: str, full_name: str, phone: str | None
+    ) -> Profile:
+        stmt = (
+            insert(Profile)
+            .values(user_id=user_id, profile_text="", full_name=full_name, phone=phone)
+            .on_conflict_do_update(
+                index_elements=["user_id"],
+                set_={"full_name": full_name, "phone": phone},
+            )
+        )
+        await self._s.execute(stmt)
+        await self._s.commit()
+        profile = await self._s.get(Profile, user_id)
+        if profile is None:
+            raise RuntimeError(f"profile missing immediately after upsert for {user_id}")
+        return profile
+
 
 class JobRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
+
+    async def get(self, job_id: int) -> Job | None:
+        return await self._s.get(Job, job_id)
 
     async def count(self) -> int:
         return (await self._s.execute(select(func.count(Job.id)))).scalar_one()
@@ -260,3 +290,137 @@ class JobRepository:
         )
         rows = (await self._s.execute(stmt)).all()
         return [(row[0], float(row[1])) for row in rows]
+
+
+class UploadedDocumentRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(
+        self,
+        *,
+        user_id: str,
+        filename: str,
+        content_type: str | None,
+        size_bytes: int,
+        gcs_uri: str | None,
+        cv_text: str,
+    ) -> UploadedDocument:
+        doc = UploadedDocument(
+            user_id=user_id,
+            filename=filename,
+            content_type=content_type,
+            size_bytes=size_bytes,
+            gcs_uri=gcs_uri,
+            cv_text=cv_text,
+        )
+        self._s.add(doc)
+        await self._s.commit()
+        await self._s.refresh(doc)
+        return doc
+
+    async def list_for_user(self, user_id: str) -> list[UploadedDocument]:
+        stmt = (
+            select(UploadedDocument)
+            .where(UploadedDocument.user_id == user_id)
+            .order_by(UploadedDocument.created_at.desc())
+        )
+        return list((await self._s.execute(stmt)).scalars())
+
+    async def get_for_user(self, doc_id: int, user_id: str) -> UploadedDocument | None:
+        stmt = select(UploadedDocument).where(
+            UploadedDocument.id == doc_id, UploadedDocument.user_id == user_id
+        )
+        return (await self._s.execute(stmt)).scalar_one_or_none()
+
+
+class ApplicationRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def create_or_get(
+        self, *, application_id: str, user_id: str, job_id: int, run_id: str | None
+    ) -> tuple[Application, bool]:
+        stmt = (
+            insert(Application)
+            .values(
+                id=application_id, user_id=user_id, job_id=job_id, run_id=run_id,
+                status=ApplicationStatus.PREPARING,
+            )
+            .on_conflict_do_nothing(constraint="uq_application_user_job")
+            .returning(Application.id)
+        )
+        created = (await self._s.execute(stmt)).scalar_one_or_none() is not None
+        await self._s.commit()
+        existing = (
+            await self._s.execute(
+                select(Application).where(
+                    Application.user_id == user_id, Application.job_id == job_id
+                )
+            )
+        ).scalar_one()
+        return existing, created
+
+    async def get(self, application_id: str) -> Application | None:
+        return await self._s.get(Application, application_id)
+
+    async def count_in_flight(self, user_id: str) -> int:
+        stmt = select(func.count(Application.id)).where(
+            Application.user_id == user_id,
+            Application.status == ApplicationStatus.PREPARING,
+        )
+        return (await self._s.execute(stmt)).scalar_one()
+
+    async def claim_for_retry(self, application_id: str) -> bool:
+        """Move a finished-unsuccessfully application back to PREPARING; True only if
+        this call won the transition, so a double retry dispatches once."""
+        stmt = (
+            update(Application)
+            .where(
+                Application.id == application_id,
+                Application.status.in_(
+                    [ApplicationStatus.NEEDS_ATTENTION, ApplicationStatus.FAILED]
+                ),
+            )
+            .values(status=ApplicationStatus.PREPARING, detail=None)
+            .returning(Application.id)
+        )
+        claimed = (await self._s.execute(stmt)).scalar_one_or_none() is not None
+        await self._s.commit()
+        return claimed
+
+    async def find_stuck(self, older_than_seconds: int) -> list[str]:
+        cutoff = datetime.now(UTC) - timedelta(seconds=older_than_seconds)
+        stmt = select(Application.id).where(
+            Application.status == ApplicationStatus.PREPARING,
+            Application.created_at < cutoff,
+        )
+        return list((await self._s.execute(stmt)).scalars().all())
+
+    async def set_status(
+        self,
+        application_id: str,
+        status: ApplicationStatus,
+        *,
+        detail: str | None = None,
+    ) -> None:
+        values: dict[str, Any] = {"status": status, "detail": detail}
+        if status == ApplicationStatus.SUBMITTED:
+            values["submitted_at"] = datetime.now(UTC)
+        await self._s.execute(
+            update(Application).where(Application.id == application_id).values(**values)
+        )
+        await self._s.commit()
+
+    async def list_by_user(
+        self, user_id: str, *, limit: int = 100
+    ) -> list[tuple[Application, Job]]:
+        stmt = (
+            select(Application, Job)
+            .join(Job, Job.id == Application.job_id)
+            .where(Application.user_id == user_id)
+            .order_by(Application.created_at.desc())
+            .limit(limit)
+        )
+        rows = (await self._s.execute(stmt)).all()
+        return [(row[0], row[1]) for row in rows]

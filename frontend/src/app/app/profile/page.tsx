@@ -22,6 +22,10 @@ export default function ProfilePage() {
   const [loaded, setLoaded] = useState(false);
   const [profileText, setProfileText] = useState("");
   const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [identitySaving, setIdentitySaving] = useState(false);
+  const [identitySaved, setIdentitySaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
@@ -33,6 +37,8 @@ export default function ProfilePage() {
         if (p) {
           setProfileText(p.profile_text);
           setLinkedinUrl(p.linkedin_url ?? "");
+          setFullName(p.full_name ?? "");
+          setPhone(p.phone ?? "");
         }
       })
       .finally(() => setLoaded(true));
@@ -53,6 +59,21 @@ export default function ProfilePage() {
       setError(err instanceof Error ? err.message : "Couldn't save.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveIdentity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIdentitySaving(true);
+    setError("");
+    try {
+      await api.putIdentity(fullName.trim(), phone.trim() || null);
+      setIdentitySaved(true);
+      setTimeout(() => setIdentitySaved(false), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't save.");
+    } finally {
+      setIdentitySaving(false);
     }
   };
 
@@ -79,6 +100,48 @@ export default function ProfilePage() {
         title="Profile."
         subtitle="The more Ada knows about your background, the sharper her advice, rewrites, and matches get."
       />
+
+      <Card className="mb-6 p-6">
+        <form onSubmit={saveIdentity} className="space-y-5">
+          <div>
+            <p className="font-medium">Applicant details</p>
+            <p className="mt-1 text-xs text-muted">
+              Used when Ada fills application forms on your behalf.
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="full-name">Full name</Label>
+              <Input
+                id="full-name"
+                required
+                minLength={2}
+                placeholder="Jane Doe"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="phone">Phone</Label>
+              <Input
+                id="phone"
+                placeholder="+234 800 000 0000"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
+            </div>
+          </div>
+          <Button type="submit" loading={identitySaving} variant="secondary">
+            {identitySaved ? (
+              <>
+                <Check className="size-4" /> Saved
+              </>
+            ) : (
+              "Save details"
+            )}
+          </Button>
+        </form>
+      </Card>
 
       <Card className="mb-6 p-6">
         <form onSubmit={save} className="space-y-5">

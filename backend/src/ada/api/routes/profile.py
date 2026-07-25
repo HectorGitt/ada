@@ -19,7 +19,14 @@ class ProfileIn(BaseModel):
 class ProfileOut(BaseModel):
     profile_text: str
     linkedin_url: str | None
+    full_name: str | None
+    phone: str | None
     updated_at: str
+
+
+class IdentityIn(BaseModel):
+    full_name: str = Field(min_length=2, max_length=160)
+    phone: str | None = Field(default=None, max_length=40)
 
 
 @router.get("", response_model=ProfileOut | None)
@@ -32,6 +39,26 @@ async def get_profile(
     return ProfileOut(
         profile_text=profile.profile_text,
         linkedin_url=profile.linkedin_url,
+        full_name=profile.full_name,
+        phone=profile.phone,
+        updated_at=profile.updated_at.isoformat(),
+    )
+
+
+@router.put("/identity", response_model=ProfileOut)
+async def put_identity(
+    body: IdentityIn,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> ProfileOut:
+    profile = await ProfileRepository(session).set_identity(
+        user_id=user.id, full_name=body.full_name.strip(), phone=body.phone
+    )
+    return ProfileOut(
+        profile_text=profile.profile_text,
+        linkedin_url=profile.linkedin_url,
+        full_name=profile.full_name,
+        phone=profile.phone,
         updated_at=profile.updated_at.isoformat(),
     )
 
@@ -48,5 +75,7 @@ async def put_profile(
     return ProfileOut(
         profile_text=profile.profile_text,
         linkedin_url=profile.linkedin_url,
+        full_name=profile.full_name,
+        phone=profile.phone,
         updated_at=profile.updated_at.isoformat(),
     )

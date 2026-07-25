@@ -13,6 +13,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
+import { ApplyButton } from "@/components/run/apply-button";
 import { RunProgress } from "@/components/run/progress";
 import { Button, Card, PageHeader, ScoreBar, SectionTitle, Skeleton } from "@/components/ui";
 import { api, type RunResult } from "@/lib/api";
@@ -169,6 +170,9 @@ function RunDetail() {
                       <ScoreBar value={m.match} />
                     </div>
                     <p className="mt-2.5 text-xs leading-relaxed text-muted">{m.reason}</p>
+                    <div className="mt-3 flex justify-end">
+                      {typeof m.job_id === "number" && <ApplyButton jobId={m.job_id} runId={id} />}
+                    </div>
                   </div>
                 </div>
               </Card>

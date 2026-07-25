@@ -5,6 +5,7 @@ search. The human-readable "why this matched" label is derived from the cosine
 similarity, not a second Gemini round-trip.
 """
 from ada.config import get_settings
+from ada.db.models import Job
 from ada.db.repositories import JobRepository
 from ada.resilience import retry_async
 from ada.vertex import vertex_client
@@ -50,12 +51,14 @@ class SearchService:
         return [self._to_match(job, distance) for job, distance in rows]
 
     @staticmethod
-    def _to_match(job: object, distance: float) -> dict:
-        similarity = max(0.0, 1.0 - distance)  # cosine distance -> similarity
+    def _to_match(job: Job, distance: float) -> dict:
+        similarity = max(0.0, 1.0 - distance)
         return {
-            "title": job.title,           # type: ignore[attr-defined]
-            "company": job.company,       # type: ignore[attr-defined]
-            "location": job.location,     # type: ignore[attr-defined]
+            "job_id": job.id,
+            "title": job.title,
+            "company": job.company,
+            "location": job.location,
+            "url": job.url,
             "match": round(similarity * 100),
             "reason": _fit_label(similarity),
         }

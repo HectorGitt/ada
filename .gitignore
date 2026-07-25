@@ -25,3 +25,4 @@ tasks/
 mutants/
 .coverage
 coverage.xml
+docker-compose.override.yml

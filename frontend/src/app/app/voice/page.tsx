@@ -6,18 +6,18 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button, Card, PageHeader } from "@/components/ui";
 import { voiceWsUrl } from "@/lib/api";
-import { startMic, type MicSession } from "@/lib/audio";
+import { createVoicePlayer, startMic, type MicSession, type VoicePlayer } from "@/lib/audio";
 
 type CallState = "idle" | "connecting" | "live" | "extracting" | "error";
 
 export default function VoicePage() {
   const router = useRouter();
   const [state, setState] = useState<CallState>("idle");
-  const [transcript, setTranscript] = useState("");
   const [error, setError] = useState("");
   const [seconds, setSeconds] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
   const micRef = useRef<MicSession | null>(null);
+  const playerRef = useRef<VoicePlayer | null>(null);
 
   // Session clock, shown in the eyebrow while Ada listens.
   useEffect(() => {
@@ -30,6 +30,8 @@ export default function VoicePage() {
   const cleanup = () => {
     micRef.current?.stop();
     micRef.current = null;
+    playerRef.current?.close();
+    playerRef.current = null;
     wsRef.current?.close();
     wsRef.current = null;
   };
@@ -38,7 +40,6 @@ export default function VoicePage() {
   const start = async () => {
     setState("connecting");
     setError("");
-    setTranscript("");
     setSeconds(0);
     try {
       const ws = new WebSocket(voiceWsUrl());
@@ -46,6 +47,7 @@ export default function VoicePage() {
 
       ws.onopen = async () => {
         try {
+          playerRef.current = createVoicePlayer();
           micRef.current = await startMic((frame) => {
             if (ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ type: "audio", data: frame }));
@@ -67,8 +69,10 @@ export default function VoicePage() {
           cv_text?: string;
           message?: string;
         };
-        if (msg.type === "transcript" && msg.data) {
-          setTranscript((prev) => prev + msg.data);
+        if (msg.type === "audio" && msg.data) {
+          playerRef.current?.play(msg.data);
+        } else if (msg.type === "interrupt") {
+          playerRef.current?.clear();
         } else if (msg.type === "intake") {
           localStorage.setItem(
             "ada.intake-draft",
@@ -77,7 +81,7 @@ export default function VoicePage() {
           cleanup();
           router.push("/app/new");
         } else if (msg.type === "error") {
-          setError(msg.message ?? "Voice intake is unavailable right now.");
+          setError(msg.message ?? "Ada's voice is unavailable right now.");
           setState("error");
           cleanup();
         }
@@ -108,7 +112,7 @@ export default function VoicePage() {
     <>
       <PageHeader
         title="Talk to Ada."
-        subtitle="A short spoken intake — Ada asks about your background and target role, then drafts your run for you."
+        subtitle="A real spoken conversation — Ada asks about your background out loud, you answer, and she drafts your run. Interrupt her any time."
       />
 
       {state === "idle" || state === "error" ? (
@@ -138,12 +142,12 @@ export default function VoicePage() {
           />
           <div className="relative flex flex-col items-center px-7 pb-7 pt-10 text-center">
             <p className="eyebrow mb-2 !text-[#a09a8c]">
-              Voice intake{state === "live" ? ` · ${clock}` : ""}
+              In conversation{state === "live" ? ` · ${clock}` : ""}
             </p>
             <h2 className="display mb-9 text-3xl">
-              Tell Ada about
+              Talking with Ada
               <br />
-              your career.
+              about your work.
             </h2>
             <div className="relative mb-8 size-32">
               {state === "live" &&
@@ -182,15 +186,9 @@ export default function VoicePage() {
             )}
             <p className="text-sm text-[#a09a8c]">
               {state === "connecting" && "Connecting to Ada..."}
-              {state === "live" && "Ada is listening — speak naturally."}
+              {state === "live" && "Just talk — Ada replies out loud. Interrupt any time."}
               {state === "extracting" && "Wrapping up — drafting your run..."}
             </p>
-            {transcript && (
-              <div className="quiet-scroll mt-5 max-h-44 w-full overflow-y-auto rounded-xl border border-[#2b2925] bg-[#1a1916] p-4 text-left text-sm leading-relaxed">
-                {transcript}
-                <span className="caret-blink text-[#8b85f4]">▎</span>
-              </div>
-            )}
             <div className="mt-8 flex w-full gap-2.5">
               <button
                 onClick={() => {

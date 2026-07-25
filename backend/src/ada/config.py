@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     # Jooble keys are country-feed-bound: maps feed host -> key.
     jooble_feeds: dict[str, str] = Field(default_factory=dict, repr=False)
 
+    # one-click apply
+    apply_max_concurrency: int = 3
+    apply_max_in_flight_per_user: int = 5
+    apply_stuck_seconds: int = 300
+
     # matching + interview
     jobs_match_k: int = 5
     interview_questions: int = 5

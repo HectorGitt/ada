@@ -11,10 +11,15 @@ from google.genai import types
 from ada.config import get_settings
 from ada.vertex import vertex_client
 
-_INTAKE_SYSTEM = """You are Ada, a warm, efficient career coach running a short spoken \
-intake. Ask about the candidate's target role, recent experience, key skills, and \
-education — one question at a time, and keep it under a few minutes. Do not give advice \
-yet; just gather what you need for a CV and job match."""
+_INTAKE_SYSTEM = """You are Ada, a warm and genuinely curious career coach having a real \
+spoken conversation with someone about their working life. This is a conversation, not a \
+form. Open naturally — greet them, then ask what they do and what they enjoy most about it. \
+Follow the thread of what they say: dig into the work they're proud of, what energizes them, \
+what they're great at, and where they want to go next. React like a person — brief \
+acknowledgements, the occasional reflection back ("that sounds like…"). One question at a \
+time, keep your turns short and let them talk. Naturally, over the chat, make sure you come \
+to understand their experience, skills, education, and the kind of role they want next, but \
+never interrogate — let it surface. Don't give long advice; this is about hearing their story."""
 
 _EXTRACT_SYSTEM = """From this intake transcript between Ada and a candidate, extract the \
 candidate's target role and a plain-text CV draft built ONLY from what the candidate \
@@ -30,12 +35,8 @@ class VoiceIntake:
         self._model = s.vertex_model
 
     def connect(self):
-        """Async context manager yielding a Live session.
-
-        Native-audio Live models only speak AUDIO; we discard the audio bytes and
-        rely on input/output transcription for the text transcript both the client
-        UI and extract() consume.
-        """
+        """Async context manager yielding a Live session. Emits native audio plus
+        input/output transcription; the relay streams both to the client."""
         config = types.LiveConnectConfig(
             response_modalities=["AUDIO"],
             system_instruction=_INTAKE_SYSTEM,

@@ -126,6 +126,44 @@ class Profile(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
     linkedin_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     profile_text: Mapped[str] = mapped_column(Text)
+    full_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class UploadedDocument(Base):
+    """CV the user uploaded: extracted text for runs/preview, original archived in GCS."""
+    __tablename__ = "uploaded_documents"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    filename: Mapped[str] = mapped_column(String(256))
+    content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    size_bytes: Mapped[int] = mapped_column()
+    gcs_uri: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    cv_text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ApplicationStatus(StrEnum):
+    PREPARING = "preparing"
+    SUBMITTED = "submitted"
+    NEEDS_ATTENTION = "needs_attention"
+    FAILED = "failed"
+
+
+class Application(Base):
+    """One submission attempt per user per job; only a detected confirmation is 'submitted'."""
+    __tablename__ = "applications"
+    __table_args__ = (UniqueConstraint("user_id", "job_id", name="uq_application_user_job"),)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id"), index=True)
+    run_id: Mapped[str | None] = mapped_column(ForeignKey("runs.id"), nullable=True)
+    status: Mapped[ApplicationStatus] = mapped_column(
+        String(20), default=ApplicationStatus.PREPARING, index=True
+    )
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

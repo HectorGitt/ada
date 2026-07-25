@@ -7,6 +7,7 @@ import {
   MessageCircle,
   Mic,
   Plus,
+  Send,
 } from "lucide-react";
 import { motion } from "motion/react";
 import Link from "next/link";
@@ -38,6 +39,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { href: "/app/new", label: "New run", icon: Plus },
       { href: "/app/runs", label: "My runs", icon: LayoutList },
       { href: "/app/documents", label: "Documents", icon: FileText },
+      { href: "/app/applications", label: "Applications", icon: Send },
     ],
   },
   {
