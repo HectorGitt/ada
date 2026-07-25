@@ -11,6 +11,7 @@ from ada.api.routes import (
     documents,
     health,
     jobs,
+    memories,
     profile,
     runs,
     voice,
@@ -48,6 +49,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router, prefix="/api")
     app.include_router(profile.router, prefix="/api")
     app.include_router(documents.router, prefix="/api")
+    app.include_router(memories.router, prefix="/api")
     app.include_router(chat.router, prefix="/api")
     app.include_router(jobs.router, prefix="/api")
     app.include_router(applications.router, prefix="/api")

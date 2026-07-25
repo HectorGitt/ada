@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp, Mic, Square } from "lucide-react";
+import { ArrowUp, Eraser, Mic, Square } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -39,28 +39,47 @@ export default function CoachPage() {
       .catch(() => setRunsCount(null));
   }, []);
 
-  // A question handed over from the dashboard's "Ask Ada anything" box.
-  const handedOff = useRef(false);
+  // Restore the saved conversation, then handle a question handed over from the
+  // dashboard's "Ask Ada anything" box (in that order, so the send builds on history).
+  const restored = useRef(false);
   useEffect(() => {
-    if (handedOff.current) return;
-    handedOff.current = true;
-    const q = localStorage.getItem("ada.coach-ask");
-    if (q) {
-      localStorage.removeItem("ada.coach-ask");
-      void send(q);
-    }
+    if (restored.current) return;
+    restored.current = true;
+    void (async () => {
+      let history: ChatMessage[] = [];
+      try {
+        history = await api.chatHistory();
+        if (history.length) setMessages(history);
+      } catch {
+        /* fresh conversation */
+      }
+      const q = localStorage.getItem("ada.coach-ask");
+      if (q) {
+        localStorage.removeItem("ada.coach-ask");
+        void send(q, history);
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const clear = async () => {
+    setMessages([]);
+    try {
+      await api.clearChatHistory();
+    } catch {
+      /* server copy survives; page reload restores it */
+    }
+  };
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const send = async (text: string) => {
+  const send = async (text: string, base?: ChatMessage[]) => {
     const content = text.trim();
     if (!content || streaming) return;
     setInput("");
-    const history: ChatMessage[] = [...messages, { role: "user", content }];
+    const history: ChatMessage[] = [...(base ?? messages), { role: "user", content }];
     setMessages([...history, { role: "assistant", content: "" }]);
     setStreaming(true);
     abortRef.current = new AbortController();
@@ -103,11 +122,23 @@ export default function CoachPage() {
       {!empty && (
         <div className="mb-4 flex items-baseline justify-between border-b border-line pb-4">
           <h1 className="display text-2xl">Ask Ada.</h1>
-          <span className="flex items-center gap-1.5 text-[11px] text-muted">
-            <span className="pulse-soft size-1.5 rounded-full bg-success" />
-            {runsCount
-              ? `Grounded in ${runsCount} ${runsCount === 1 ? "run" : "runs"}`
-              : "Grounded in your profile"}
+          <span className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5 text-[11px] text-muted">
+              <span className="pulse-soft size-1.5 rounded-full bg-success" />
+              {runsCount
+                ? `Grounded in ${runsCount} ${runsCount === 1 ? "run" : "runs"}`
+                : "Grounded in your profile"}
+            </span>
+            <button
+              type="button"
+              onClick={() => void clear()}
+              disabled={streaming}
+              aria-label="Clear conversation"
+              title="Clear conversation"
+              className="flex items-center gap-1 text-[11px] text-muted transition-colors hover:text-danger disabled:opacity-40"
+            >
+              <Eraser className="size-3.5" /> Clear
+            </button>
           </span>
         </div>
       )}

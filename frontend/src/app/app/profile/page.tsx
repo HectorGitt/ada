@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, LogOut } from "lucide-react";
+import { Brain, Check, LogOut, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -14,7 +14,65 @@ import {
   Skeleton,
   Textarea,
 } from "@/components/ui";
-import { api } from "@/lib/api";
+import { api, type Memory } from "@/lib/api";
+
+/** What Ada has learned from chats — visible, and deletable one fact at a time. */
+function Memories() {
+  const [memories, setMemories] = useState<Memory[] | null>(null);
+
+  useEffect(() => {
+    api
+      .listMemories()
+      .then(setMemories)
+      .catch(() => setMemories([]));
+  }, []);
+
+  const forget = async (id: number) => {
+    setMemories((prev) => prev?.filter((m) => m.id !== id) ?? null);
+    try {
+      await api.deleteMemory(id);
+    } catch {
+      const fresh = await api.listMemories().catch(() => []);
+      setMemories(fresh);
+    }
+  };
+
+  if (memories === null || memories.length === 0) return null;
+
+  return (
+    <Card className="mb-6 p-6">
+      <div className="mb-4 flex items-center gap-2.5">
+        <span className="flex size-9 items-center justify-center rounded-xl bg-accent-soft">
+          <Brain className="size-4 text-accent" />
+        </span>
+        <div>
+          <p className="font-medium">What Ada remembers</p>
+          <p className="text-xs text-muted">
+            Learned from your conversations — remove anything that&apos;s off.
+          </p>
+        </div>
+      </div>
+      <ul className="space-y-2">
+        {memories.map((m) => (
+          <li
+            key={m.id}
+            className="group flex items-start justify-between gap-3 rounded-lg bg-line/20 px-3.5 py-2.5 text-sm"
+          >
+            <span>{m.content}</span>
+            <button
+              type="button"
+              onClick={() => forget(m.id)}
+              aria-label={`Forget: ${m.content}`}
+              className="mt-0.5 shrink-0 text-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100"
+            >
+              <X className="size-3.5" />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
 
 export default function ProfilePage() {
   const { email } = useAuth();
@@ -185,6 +243,8 @@ export default function ProfilePage() {
           </Button>
         </form>
       </Card>
+
+      <Memories />
 
       <Card className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-3">

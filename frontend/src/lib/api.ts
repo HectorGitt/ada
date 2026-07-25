@@ -75,6 +75,12 @@ export interface Profile {
   updated_at: string;
 }
 
+export interface Memory {
+  id: number;
+  content: string;
+  created_at: string;
+}
+
 export interface UploadedDoc {
   id: number;
   filename: string;
@@ -186,6 +192,20 @@ export const api = {
     request<Scorecard>(`/api/runs/${id}/interview`, {
       method: "POST",
       body: JSON.stringify({ answers }),
+    }),
+
+  // chat history — the rolling Ask Ada conversation
+  chatHistory: () => request<ChatMessage[]>("/api/chat/history"),
+  clearChatHistory: () =>
+    fetch("/api/chat/history", { method: "DELETE", credentials: "same-origin" }).then((r) => {
+      if (!r.ok) throw new ApiError(r.status, r.statusText);
+    }),
+
+  // memories — what Ada remembers about the user from chats
+  listMemories: () => request<Memory[]>("/api/memories"),
+  deleteMemory: (id: number) =>
+    fetch(`/api/memories/${id}`, { method: "DELETE", credentials: "same-origin" }).then((r) => {
+      if (!r.ok) throw new ApiError(r.status, r.statusText);
     }),
 
   // documents

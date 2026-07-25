@@ -32,6 +32,7 @@ class CoachService:
         messages: list[dict[str, str]],
         profile: Profile | None,
         runs: list[Run],
+        memories: list[str] | None = None,
     ) -> AsyncIterator[str]:
         contents = [
             types.Content(
@@ -40,7 +41,7 @@ class CoachService:
             )
             for m in messages[-_MAX_TURNS:]
         ]
-        system = _SYSTEM + self._grounding(profile, runs)
+        system = _SYSTEM + self._grounding(profile, runs, memories or [])
         stream = await self._client.aio.models.generate_content_stream(
             model=self._model,
             contents=contents,
@@ -51,8 +52,13 @@ class CoachService:
                 yield chunk.text
 
     @staticmethod
-    def _grounding(profile: Profile | None, runs: list[Run]) -> str:
+    def _grounding(profile: Profile | None, runs: list[Run], memories: list[str]) -> str:
         parts: list[str] = []
+        if memories:
+            facts = "\n".join(f"- {m}" for m in memories)
+            parts.append(
+                f"\n\nTHINGS YOU REMEMBER ABOUT THIS CANDIDATE (from past conversations):\n{facts}"
+            )
         if profile:
             parts.append(f"\n\nCANDIDATE PROFILE (imported):\n{profile.profile_text[:8000]}")
             if profile.linkedin_url:
