@@ -25,18 +25,21 @@ class SearchService:
         self._attempts = get_settings().llm_max_attempts
 
     async def embed(self, text: str) -> list[float]:
-        resp = await retry_async(
-            lambda: self._client.aio.models.embed_content(model=self._model, contents=text),
-            attempts=self._attempts,
-        )
-        return list(resp.embeddings[0].values)
+        return (await self.embed_many([text]))[0]
 
     async def embed_many(self, texts: list[str]) -> list[list[float]]:
         resp = await retry_async(
             lambda: self._client.aio.models.embed_content(model=self._model, contents=texts),
             attempts=self._attempts,
         )
-        return [list(e.values) for e in resp.embeddings]
+        if not resp.embeddings:
+            raise RuntimeError("embedding API returned no vectors")
+        vectors: list[list[float]] = []
+        for e in resp.embeddings:
+            if e.values is None:
+                raise RuntimeError("embedding API returned an empty vector")
+            vectors.append(list(e.values))
+        return vectors
 
     async def match(
         self, *, jobs: JobRepository, target_role: str, cv_text: str, k: int = 5

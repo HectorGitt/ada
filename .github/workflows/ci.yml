@@ -30,13 +30,30 @@ jobs:
       RUN_DB_TESTS: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
-      - run: ruff check src tests migrations
-      - run: alembic upgrade head       # validates all migrations against real Postgres
-      - run: pytest -q
+      - name: protected paths (PRs only)
+        if: github.event_name == 'pull_request'
+        run: ./scripts/check-protected.sh "origin/${{ github.base_ref }}"
+      - run: ./scripts/check-cheats.sh
+      - run: ruff check src tests features migrations
+      - run: mypy src
+      - run: alembic upgrade head
+      - name: coverage gate
+        run: |
+          source quality/thresholds.env
+          pytest tests -q --cov=ada --cov-report=term --cov-fail-under=$MIN_COVERAGE
+      - run: pytest features -q -p no:cacheprovider
+      - run: lint-imports
+      - run: bandit -q -r src
+      - name: mutation gate
+        run: |
+          source quality/thresholds.env
+          MIN_MUTATION_SCORE=$MIN_MUTATION_SCORE python scripts/mutation_score.py
 
   frontend:
     runs-on: ubuntu-latest

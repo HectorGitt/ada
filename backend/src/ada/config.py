@@ -26,13 +26,18 @@ class Settings(BaseSettings):
 
     gcp_project: str = ""
     gcp_location: str = "us-central1"
+    # Uploaded CV originals land here (empty = extraction only, nothing stored).
+    gcs_bucket: str = ""
     vertex_model: str = "gemini-2.5-flash"
     embedding_model: str = "text-embedding-004"
-    live_model: str = "gemini-2.0-flash-live-preview-04-09"
+    live_model: str = "gemini-live-2.5-flash-native-audio"
 
     # LLM resilience
     llm_timeout_ms: int = 60_000
     llm_max_attempts: int = 3
+
+    # Jooble keys are country-feed-bound: maps feed host -> key.
+    jooble_feeds: dict[str, str] = Field(default_factory=dict, repr=False)
 
     # matching + interview
     jobs_match_k: int = 5

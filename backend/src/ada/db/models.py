@@ -2,10 +2,12 @@
 
 Run: one per paid session; holds inputs and the generated deliverables (rewritten CV,
 job matches, interview questions, and scored answers). ProcessedEvent: idempotency
-ledger for webhook events. Job: seeded reference data with a pgvector embedding.
-User/AuthToken/Session: email+password authentication — passwords are bcrypt-hashed,
-reset tokens are stored hashed and single-use, and sessions are opaque tokens hashed at rest.
+ledger for webhook events. Job: a listing ingested from an ATS/aggregator, embedded
+for pgvector matching. User/AuthToken/Session: email+password authentication —
+passwords are bcrypt-hashed, reset tokens are stored hashed and single-use, and
+sessions are opaque tokens hashed at rest.
 """
+import uuid
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
@@ -73,21 +75,26 @@ class Run(Base):
 
 
 class Job(Base):
-    """Seeded reference data. Matched to a run via pgvector cosine KNN."""
+    """Listing ingested from an ATS/aggregator, deduped on (source, external_id)."""
     __tablename__ = "jobs"
+    __table_args__ = (UniqueConstraint("source", "external_id", name="uq_jobs_source_external"),)
     id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(32), default="seed")
+    external_id: Mapped[str] = mapped_column(String(256), default=lambda: uuid.uuid4().hex)
     title: Mapped[str] = mapped_column(String(256))
     company: Mapped[str] = mapped_column(String(256))
     location: Mapped[str] = mapped_column(String(256))
+    remote: Mapped[bool] = mapped_column(default=False)
+    url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     description: Mapped[str] = mapped_column(Text)
-    embedding: Mapped[list[float]] = mapped_column(Vector(EMBED_DIM))
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBED_DIM), nullable=True)
 
 
 class User(Base):
     __tablename__ = "users"
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
-    # bcrypt hash; nullable so legacy (pre-password) rows remain valid until they set one.
     password_hash: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

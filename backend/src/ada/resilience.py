@@ -9,6 +9,8 @@ import random
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
+_jitter = random.SystemRandom()
+
 T = TypeVar("T")
 
 _TRANSIENT_CODES = {429, 500, 502, 503, 504}
@@ -33,6 +35,7 @@ async def retry_async(
             last = exc
             if i == attempts - 1 or not _is_transient(exc):
                 raise
-            await asyncio.sleep(base_delay * (2**i) + random.random() * 0.1)
-    assert last is not None  # unreachable
+            await asyncio.sleep(base_delay * (2**i) + _jitter.random() * 0.1)
+    if last is None:
+        raise RuntimeError("retry loop exited without an exception")
     raise last

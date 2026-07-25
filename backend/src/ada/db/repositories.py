@@ -177,7 +177,8 @@ class ProfileRepository:
         await self._s.execute(stmt)
         await self._s.commit()
         profile = await self._s.get(Profile, user_id)
-        assert profile is not None
+        if profile is None:
+            raise RuntimeError(f"profile missing immediately after upsert for {user_id}")
         return profile
 
 
@@ -213,9 +214,49 @@ class JobRepository:
         ).scalars()
         return count, list(rows.all())
 
+    _UPSERT_BATCH = 500
+
+    async def upsert_many(self, listings: list[dict[str, Any]]) -> int:
+        """Insert-or-refresh keyed on (source, external_id); a NULL incoming
+        embedding never overwrites a stored vector."""
+        listings = list({(li["source"], li["external_id"]): li for li in listings}.values())
+        for start in range(0, len(listings), self._UPSERT_BATCH):
+            batch = listings[start : start + self._UPSERT_BATCH]
+            stmt = insert(Job).values(batch)
+            stmt = stmt.on_conflict_do_update(
+                constraint="uq_jobs_source_external",
+                set_={
+                    "title": stmt.excluded.title,
+                    "company": stmt.excluded.company,
+                    "location": stmt.excluded.location,
+                    "remote": stmt.excluded.remote,
+                    "url": stmt.excluded.url,
+                    "description": stmt.excluded.description,
+                    "posted_at": stmt.excluded.posted_at,
+                    "embedding": func.coalesce(stmt.excluded.embedding, Job.embedding),
+                },
+            )
+            await self._s.execute(stmt)
+        await self._s.commit()
+        return len(listings)
+
+    async def unembedded(self, limit: int = 200) -> list[Job]:
+        stmt = select(Job).where(Job.embedding.is_(None)).limit(limit)
+        return list((await self._s.execute(stmt)).scalars())
+
+    async def set_embeddings(self, pairs: list[tuple[int, list[float]]]) -> None:
+        for job_id, vector in pairs:
+            await self._s.execute(update(Job).where(Job.id == job_id).values(embedding=vector))
+        await self._s.commit()
+
     async def knn(self, embedding: list[float], k: int) -> list[tuple[Job, float]]:
-        """Nearest jobs by cosine distance. Returns (job, distance), closest first."""
+        """Nearest embedded jobs by cosine distance. Returns (job, distance), closest first."""
         distance = Job.embedding.cosine_distance(embedding).label("distance")
-        stmt = select(Job, distance).order_by(distance).limit(k)
+        stmt = (
+            select(Job, distance)
+            .where(Job.embedding.is_not(None))
+            .order_by(distance)
+            .limit(k)
+        )
         rows = (await self._s.execute(stmt)).all()
         return [(row[0], float(row[1])) for row in rows]

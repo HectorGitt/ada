@@ -34,8 +34,10 @@ async def test_preview_counts_and_samples_without_paid_fields():
     from ada.db.session import _session_factory, init_db
 
     await init_db()
-    # A unique token keeps this test independent of seeded/previous data.
-    marker = f"zx{uuid.uuid4().hex[:8]}"
+    # Letters-only unique token: role_keywords extracts alphabetic runs, so a
+    # hex marker with digits would degrade to short non-unique fragments and
+    # collide with real ingested listings in a shared database.
+    marker = "zx" + "".join(c for c in uuid.uuid4().hex if c.isalpha())
     zero_vec = [0.0] * EMBED_DIM
     async with _session_factory() as s:
         JobRepositorySession = JobRepository(s)
@@ -64,11 +66,25 @@ async def test_preview_counts_and_samples_without_paid_fields():
                 ),
             ]
         )
-    async with _session_factory() as s:
-        count, jobs = await JobRepository(s).preview(f"{marker} role")
-    assert count == 2
-    titles = {j.title for j in jobs}
-    assert titles == {f"{marker} Sales Manager", f"{marker} Regional Manager"}
+    try:
+        async with _session_factory() as s:
+            # Query by the marker alone: generic words would match real listings.
+            count, jobs = await JobRepository(s).preview(marker)
+        assert count == 2
+        titles = {j.title for j in jobs}
+        assert titles == {f"{marker} Sales Manager", f"{marker} Regional Manager"}
+    finally:
+        from sqlalchemy import delete
+
+        async with _session_factory() as s:
+            await s.execute(
+                delete(Job).where(
+                    Job.title.in_(
+                        [f"{marker} Sales Manager", f"{marker} Regional Manager", "Unrelated Nurse"]
+                    )
+                )
+            )
+            await s.commit()
 
 
 @_db

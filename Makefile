@@ -25,3 +25,43 @@ deploy:
 	cd backend && gcloud run deploy ada --source . --region $${GCP_LOCATION:-us-central1} \
 	  --set-secrets PAYSTACK_SECRET_KEY=paystack-secret:latest,STRIPE_SECRET_KEY=stripe-secret:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest \
 	  --allow-unauthenticated
+
+include backend/quality/thresholds.env
+export
+
+.PHONY: verify fast cheats protected gauntlet-lint types coverage bdd arch security mutate hooks
+verify: cheats protected gauntlet-lint types coverage bdd arch security mutate
+	@echo ""
+	@echo "✓ gauntlet passed — coverage ≥ $(MIN_COVERAGE)%, mutation ≥ $(MIN_MUTATION_SCORE)%"
+
+fast: cheats gauntlet-lint types coverage bdd arch
+
+cheats:
+	cd backend && ./scripts/check-cheats.sh
+
+protected:
+	cd backend && ./scripts/check-protected.sh $(BASE)
+
+gauntlet-lint:
+	cd backend && ruff check src tests features migrations
+
+types:
+	cd backend && mypy src
+
+coverage:
+	cd backend && pytest tests -q --cov=ada --cov-report=term --cov-fail-under=$(MIN_COVERAGE)
+
+bdd:
+	cd backend && pytest features -q -p no:cacheprovider
+
+arch:
+	cd backend && lint-imports
+
+security:
+	cd backend && bandit -q -r src
+
+mutate:
+	cd backend && python scripts/mutation_score.py
+
+hooks:
+	cd backend && ./scripts/install-hooks.sh

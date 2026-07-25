@@ -11,7 +11,6 @@ WORKDIR /app
 COPY --from=build /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=build /usr/local/bin /usr/local/bin
 COPY src ./src
-COPY web ./web
 USER appuser
 EXPOSE 8080
 CMD ["uvicorn", "ada.main:app", "--host", "0.0.0.0", "--port", "8080"]

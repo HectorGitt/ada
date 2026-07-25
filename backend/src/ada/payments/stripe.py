@@ -33,6 +33,8 @@ def create_checkout(run: Run) -> str:
         success_url=f"{s.frontend_origin}/app/runs/{run.id}?paid=1",
         cancel_url=f"{s.frontend_origin}/app/new?canceled=1",
     )
+    if session.url is None:
+        raise RuntimeError("Stripe checkout session created without a redirect URL")
     return session.url
 
 

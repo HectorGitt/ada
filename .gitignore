@@ -20,3 +20,8 @@ next-env.d.ts
 **/Claude.md
 tasks/
 **/.claude/
+
+# gauntlet artifacts
+mutants/
+.coverage
+coverage.xml

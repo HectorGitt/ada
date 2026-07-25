@@ -158,6 +158,27 @@ export const api = {
       body: JSON.stringify({ answers }),
     }),
 
+  // documents
+  uploadCv: async (file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    const res = await fetch("/api/documents/cv", {
+      method: "POST",
+      credentials: "same-origin",
+      body,
+    });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        detail = ((await res.json()) as { detail?: string }).detail ?? detail;
+      } catch {
+        /* non-JSON error body */
+      }
+      throw new ApiError(res.status, detail);
+    }
+    return res.json() as Promise<{ cv_text: string; gcs_uri: string | null; filename: string }>;
+  },
+
   // profile
   getProfile: () => request<Profile | null>("/api/profile"),
   putProfile: (body: { profile_text: string; linkedin_url?: string | null }) =>

@@ -1,0 +1,14 @@
+{
+  "jobs": [
+    {
+      "id": 4455667788,
+      "title": "Backend Engineer, Payments",
+      "absolute_url": "https://boards.greenhouse.io/acme/jobs/4455667788",
+      "location": { "name": "Remote — EMEA" },
+      "first_published": "2026-07-01T09:30:00-04:00",
+      "updated_at": "2026-07-20T12:00:00-04:00",
+      "content": "&lt;div&gt;&lt;p&gt;Build the &lt;strong&gt;payments&lt;/strong&gt; platform.&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Python&lt;/li&gt;&lt;li&gt;Postgres&lt;/li&gt;&lt;/ul&gt;&lt;/div&gt;"
+    }
+  ],
+  "meta": { "total": 1 }
+}

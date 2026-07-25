@@ -1,0 +1,22 @@
+# HUMAN-OWNED. Architecture is a constraint, not a suggestion.
+[importlinter]
+root_package = ada
+include_external_packages = True
+
+[importlinter:contract:layers]
+name = Layered architecture (api -> services -> db)
+type = layers
+layers =
+    ada.api
+    ada.services
+    ada.db
+
+[importlinter:contract:db-no-io-clients]
+name = The data layer must not reach for network clients
+type = forbidden
+source_modules =
+    ada.db
+forbidden_modules =
+    httpx
+    google
+    stripe

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Check, Loader2, Mic } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, FileText, Loader2, Mic, Upload } from "lucide-react";
 import { motion } from "motion/react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
@@ -32,6 +32,7 @@ interface Saved {
   cv: string;
   step: Step;
   fromVoice?: boolean;
+  cvName?: string;
 }
 
 function loadSaved(): Saved | null {
@@ -45,6 +46,7 @@ function loadSaved(): Saved | null {
       cv: s.cv ?? "",
       step: STEPS.includes(s.step as Step) ? (s.step as Step) : "role",
       fromVoice: !!s.fromVoice,
+      cvName: s.cvName ?? "",
     };
   } catch {
     return null;
@@ -99,6 +101,11 @@ function NewRun() {
   const [step, setStep] = useState<Step>("role");
   const [role, setRole] = useState("");
   const [cv, setCv] = useState("");
+  const [cvName, setCvName] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const [pasteMode, setPasteMode] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const [fromVoice, setFromVoice] = useState(false);
   const [provider, setProvider] = useState<"paystack" | "stripe">("paystack");
   const [preview, setPreview] = useState<JobsPreview | null | "loading" | "error">(null);
@@ -155,6 +162,7 @@ function NewRun() {
     if (saved) {
       setRole(saved.role);
       setCv(saved.cv);
+      setCvName(saved.cvName ?? "");
       setFromVoice(!!saved.fromVoice);
       setStep(params.get("canceled") && saved.cv ? "pay" : saved.step);
     }
@@ -173,6 +181,22 @@ function NewRun() {
       .then(setPreview)
       .catch(() => setPreview("error"));
   }, [step, role, preview]);
+
+  const onCvFile = async (file: File) => {
+    setUploadError("");
+    setUploading(true);
+    try {
+      const out = await api.uploadCv(file);
+      setCv(out.cv_text);
+      setCvName(out.filename);
+      setFromVoice(false);
+      save({ cv: out.cv_text, cvName: out.filename, fromVoice: false });
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Couldn't read that file.");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const pay = async () => {
     setBusy(true);
@@ -270,55 +294,143 @@ function NewRun() {
               <Mic className="size-3.5" /> Pulled from your call — edit if anything&apos;s off
             </p>
           )}
-          <h1 className="display text-3xl sm:text-4xl">Paste your current CV.</h1>
+          <h1 className="display text-3xl sm:text-4xl">Upload your current CV.</h1>
           <p className="mt-3 text-sm text-muted">
-            Rough is fine — Ada does the polishing. She works only with what&apos;s
-            really in it; nothing gets invented.
+            PDF, Word, or plain text — rough is fine, Ada does the polishing. She
+            works only with what&apos;s really in it; nothing gets invented.
           </p>
-          <form
-            className="mt-8"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (cvValid(cv)) {
-                save({ cv: cv.trim() });
-                go("teaser");
-              }
-            }}
-          >
-            <Textarea
-              autoFocus
-              rows={12}
-              value={cv}
-              onChange={(e) => setCv(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && cvValid(cv)) {
-                  e.preventDefault();
-                  save({ cv: cv.trim() });
-                  go("teaser");
-                }
-              }}
-              placeholder="Paste the whole thing — experience, education, the lot."
-              aria-label="Your current CV"
-            />
-            <div className="mt-6 flex items-center justify-between gap-4">
+
+          {pasteMode ? (
+            <div className="mt-8">
+              <Textarea
+                autoFocus
+                rows={12}
+                value={cv}
+                onChange={(e) => setCv(e.target.value)}
+                placeholder="Paste the whole thing — experience, education, the lot."
+                aria-label="Your current CV"
+              />
               <button
                 type="button"
-                onClick={() => go("role")}
-                className="inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-ink"
+                onClick={() => setPasteMode(false)}
+                className="mt-3 text-xs text-muted underline-offset-2 transition-colors hover:text-ink hover:underline"
               >
-                <ArrowLeft className="size-4" /> Back
+                Upload a file instead
               </button>
-              <div className="flex items-center gap-4">
-                <span className="text-xs text-muted max-sm:hidden">
-                  {cvValid(cv) ? "⌘/Ctrl + Enter to continue" : "A few lines of real experience unlocks this"}
-                </span>
-                <Button type="submit" disabled={!cvValid(cv)} className="group">
-                  Continue
-                  <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-                </Button>
+            </div>
+          ) : cvValid(cv) ? (
+            <div className="mt-8 rounded-xl border border-line bg-accent-soft/40 p-5">
+              <div className="flex items-start gap-3">
+                <FileText className="mt-0.5 size-5 shrink-0 text-accent" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">
+                    {cvName || (fromVoice ? "From your call with Ada" : "CV ready")}
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    {cv.trim().length.toLocaleString()} characters read
+                  </p>
+                  <p className="mt-2 line-clamp-2 text-xs text-muted">{cv.trim().slice(0, 180)}</p>
+                </div>
+              </div>
+              <div className="mt-4 flex gap-4 text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCv("");
+                    setCvName("");
+                    save({ cv: "", cvName: "" });
+                  }}
+                  className="text-muted underline-offset-2 transition-colors hover:text-ink hover:underline"
+                >
+                  Replace
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPasteMode(true)}
+                  className="text-muted underline-offset-2 transition-colors hover:text-ink hover:underline"
+                >
+                  Edit as text
+                </button>
               </div>
             </div>
-          </form>
+          ) : (
+            <label
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                const file = e.dataTransfer.files?.[0];
+                if (file) void onCvFile(file);
+              }}
+              className={`mt-8 flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-14 text-center transition-colors ${
+                dragOver ? "border-accent bg-accent-soft" : "border-line hover:border-ink/30"
+              }`}
+            >
+              <input
+                type="file"
+                accept=".pdf,.docx,.txt"
+                className="sr-only"
+                disabled={uploading}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void onCvFile(file);
+                  e.target.value = "";
+                }}
+              />
+              {uploading ? (
+                <>
+                  <Loader2 className="size-6 animate-spin text-accent" />
+                  <p className="text-sm text-muted">Reading your CV…</p>
+                </>
+              ) : (
+                <>
+                  <Upload className="size-6 text-accent" />
+                  <p className="text-sm">
+                    <span className="font-medium text-accent">Choose a file</span> or drag it here
+                  </p>
+                  <p className="text-xs text-muted">PDF, DOCX, or TXT · 5 MB max</p>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setPasteMode(true);
+                    }}
+                    className="mt-1 text-xs text-muted underline-offset-2 transition-colors hover:text-ink hover:underline"
+                  >
+                    Prefer to paste the text?
+                  </button>
+                </>
+              )}
+            </label>
+          )}
+
+          {uploadError && <p className="mt-3 text-sm text-danger">{uploadError}</p>}
+
+          <div className="mt-6 flex items-center justify-between gap-4">
+            <button
+              type="button"
+              onClick={() => go("role")}
+              className="inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-ink"
+            >
+              <ArrowLeft className="size-4" /> Back
+            </button>
+            <Button
+              type="button"
+              disabled={!cvValid(cv)}
+              onClick={() => {
+                save({ cv: cv.trim() });
+                go("teaser");
+              }}
+              className="group"
+            >
+              Continue
+              <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+            </Button>
+          </div>
         </StepShell>
       )}
 

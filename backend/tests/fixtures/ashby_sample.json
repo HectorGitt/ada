@@ -1,0 +1,16 @@
+{
+  "apiVersion": "1",
+  "jobs": [
+    {
+      "id": "f0e1d2c3-b4a5-6789-0123-456789abcdef",
+      "title": "Product Designer",
+      "location": "Remote",
+      "isRemote": true,
+      "publishedAt": "2026-07-10T08:00:00.000Z",
+      "jobUrl": "https://jobs.ashbyhq.com/acme/f0e1d2c3",
+      "applyUrl": "https://jobs.ashbyhq.com/acme/f0e1d2c3/application",
+      "descriptionHtml": "<p>Design end-to-end flows for our fintech products.</p>",
+      "descriptionPlain": "Design end-to-end flows for our fintech products."
+    }
+  ]
+}

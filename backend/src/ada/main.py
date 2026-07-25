@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from ada.api.routes import auth, chat, health, jobs, profile, runs, voice, webhooks
+from ada.api.routes import auth, chat, documents, health, jobs, profile, runs, voice, webhooks
 from ada.config import get_settings
 from ada.db.session import init_db
 from ada.observability import configure_logging
@@ -36,6 +36,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router, prefix="/api")
     app.include_router(auth.router, prefix="/api")
     app.include_router(profile.router, prefix="/api")
+    app.include_router(documents.router, prefix="/api")
     app.include_router(chat.router, prefix="/api")
     app.include_router(jobs.router, prefix="/api")
     app.include_router(runs.router, prefix="/api")

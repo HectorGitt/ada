@@ -1,0 +1,11 @@
+# HUMAN-OWNED. Agents must not modify anything matching these globs.
+# To change one as a human: HUMAN=1 git commit ...
+backend/features/*
+backend/tests/acceptance/*
+backend/quality/*
+backend/scripts/*
+backend/.importlinter
+backend/pyproject.toml
+Makefile
+AGENTS.md
+.github/*

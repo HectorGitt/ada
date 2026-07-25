@@ -26,10 +26,11 @@ async def seed_jobs() -> int:
         vectors = await SearchService().embed_many(texts)
         jobs = [
             Job(
+                source="seed", external_id=f"seed-{i}",
                 title=j["title"], company=j["company"], location=j["location"],
                 description=j["description"], embedding=vector,
             )
-            for j, vector in zip(raw, vectors, strict=True)
+            for i, (j, vector) in enumerate(zip(raw, vectors, strict=True))
         ]
         await repo.add_many(jobs)
         return len(jobs)

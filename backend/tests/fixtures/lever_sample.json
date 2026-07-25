@@ -1,0 +1,16 @@
+[
+  {
+    "id": "a1b2c3d4-5678-90ab-cdef-111213141516",
+    "text": "Senior Frontend Engineer",
+    "hostedUrl": "https://jobs.lever.co/acme/a1b2c3d4",
+    "createdAt": 1751328000000,
+    "workplaceType": "remote",
+    "categories": {
+      "location": "Lagos, Nigeria",
+      "commitment": "Full-time",
+      "team": "Engineering"
+    },
+    "descriptionPlain": "Own the design system. React, TypeScript, accessibility-first.",
+    "description": "<div>Own the design system.</div>"
+  }
+]

@@ -66,6 +66,26 @@ uvicorn ada.main:app --reload --port 8080
 
 Local `APP_ENV=local`: schema auto-creates on boot, password-reset links are logged not emailed.
 
+## Fetching jobs
+
+Matching only ever reads the local `jobs` table; listings are pulled ahead of time:
+
+```bash
+python -m ada.ingest [--limit N]
+```
+
+The pipeline fetches every source configured in `src/ada/ingest/boards.py`
+(Greenhouse, Lever, and Ashby boards — public, keyless; Jooble when `JOOBLE_FEEDS`
+maps feed hosts to keys — keys are country-bound, e.g. `ng.jooble.org` for Nigeria
+plus `jooble.org` for remote/global roles), normalizes each listing to one schema, upserts
+with `ON CONFLICT (source, external_id) DO UPDATE` (re-runs refresh, never duplicate),
+then embeds any rows with NULL embeddings. Without model credentials the embed pass
+logs and skips — listings still land, and the next credentialed run backfills vectors.
+
+In production this runs as a **Cloud Run Job on a Cloud Scheduler trigger** (e.g. every
+6 hours), never in a request handler. `python -m ada.seed` remains a dev-only fallback
+corpus for running without any network fetch.
+
 ## Test
 
 ```bash

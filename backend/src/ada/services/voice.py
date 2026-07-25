@@ -30,10 +30,17 @@ class VoiceIntake:
         self._model = s.vertex_model
 
     def connect(self):
-        """Async context manager yielding a Live session (text-out transcript)."""
+        """Async context manager yielding a Live session.
+
+        Native-audio Live models only speak AUDIO; we discard the audio bytes and
+        rely on input/output transcription for the text transcript both the client
+        UI and extract() consume.
+        """
         config = types.LiveConnectConfig(
-            response_modalities=["TEXT"],
+            response_modalities=["AUDIO"],
             system_instruction=_INTAKE_SYSTEM,
+            input_audio_transcription=types.AudioTranscriptionConfig(),
+            output_audio_transcription=types.AudioTranscriptionConfig(),
         )
         return self._client.aio.live.connect(model=self._live_model, config=config)
 
