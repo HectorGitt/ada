@@ -24,7 +24,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
   const url = request.nextUrl.clone();
-  url.pathname = pathname === "/" ? "/hire" : `/hire${pathname}`;
+  // The subdomain root is Uche's marketing landing; the console lives at /hire.
+  url.pathname = pathname === "/" ? "/hire/home" : `/hire${pathname}`;
   return NextResponse.rewrite(url);
 }
 
