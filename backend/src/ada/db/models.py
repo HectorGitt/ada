@@ -88,6 +88,9 @@ class Job(Base):
     url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     description: Mapped[str] = mapped_column(Text)
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set when an employer posts the role via Grace; NULL for ingested listings. Employer
+    # postings share the pool, so they surface in candidate matching too.
+    posted_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBED_DIM), nullable=True)
 
 
@@ -96,6 +99,9 @@ class User(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
     password_hash: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # "candidate" (default) uses Ada; "employer" uses Grace to hire.
+    account_type: Mapped[str] = mapped_column(String(16), default="candidate")
+    company: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -121,13 +127,23 @@ class Session(Base):
 
 
 class Profile(Base):
-    """Career profile imported by the user (LinkedIn export/paste). Grounds chat and runs."""
+    """Career profile imported by the user (LinkedIn export/paste). Grounds chat and runs.
+
+    For discoverable candidates it doubles as the search record Grace ranks: `embedding`
+    is the candidate vector and `insights` is Ada's structured analysis of them.
+    """
     __tablename__ = "profiles"
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
     linkedin_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     profile_text: Mapped[str] = mapped_column(Text)
     full_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Employer-discovery opt-in (the channel-conflict wall) + the search vector/analysis.
+    discoverable: Mapped[bool] = mapped_column(default=False, index=True)
+    headline: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBED_DIM), nullable=True)
+    insights: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -219,3 +235,28 @@ class Subscription(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class IntroStatus(StrEnum):
+    REQUESTED = "requested"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+
+
+class Intro(Base):
+    """An employer reaching out to a discoverable candidate about a role — the
+    reach-out and the demand signal the recruiter business is built on. One per
+    (employer, candidate, job)."""
+    __tablename__ = "intros"
+    __table_args__ = (
+        UniqueConstraint("employer_id", "candidate_id", "job_id", name="uq_intro"),
+    )
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    employer_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    candidate_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id"), index=True)
+    status: Mapped[IntroStatus] = mapped_column(
+        String(16), default=IntroStatus.REQUESTED, index=True
+    )
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

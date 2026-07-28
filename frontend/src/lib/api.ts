@@ -99,6 +99,70 @@ export interface Profile {
   updated_at: string;
 }
 
+export interface MeOut {
+  email: string;
+  account_type: "candidate" | "employer";
+  company: string | null;
+}
+
+export interface CandidateInsight {
+  headline: string;
+  seniority: string;
+  years_experience: number;
+  location: string;
+  top_skills: string[];
+  strengths: string[];
+  growth_areas: string[];
+  market_fit: string;
+  readiness_score: number;
+  summary: string;
+}
+
+export interface InsightsOut {
+  insights: CandidateInsight | null;
+  ready: boolean;
+  reason?: string;
+  discoverable?: boolean;
+}
+
+export interface EmployerJob {
+  id: number;
+  title: string;
+  company: string;
+  location: string;
+  remote: boolean;
+  description: string;
+}
+
+export interface CandidateCard {
+  user_id: string;
+  headline: string | null;
+  location: string | null;
+  seniority: string | null;
+  years_experience: number | null;
+  top_skills: string[];
+  match: number;
+  verdict: string;
+  rationale: string;
+  intro_requested?: boolean;
+}
+
+export interface Shortlist {
+  summary: string;
+  candidates: CandidateCard[];
+  unavailable?: boolean;
+}
+
+export interface EmployerIntro {
+  id: string;
+  job_id: number;
+  candidate_id: string;
+  candidate_headline: string | null;
+  status: string;
+  message: string | null;
+  created_at: string;
+}
+
 export interface Memory {
   id: number;
   content: string;
@@ -196,8 +260,42 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ token, password }),
     }),
-  me: () => request<{ email: string }>("/api/auth/me"),
+  me: () => request<MeOut>("/api/auth/me"),
   logout: () => request<{ status: string }>("/api/auth/logout", { method: "POST" }),
+
+  // account type (candidate <-> employer)
+  setAccount: (account_type: "candidate" | "employer", company: string | null) =>
+    request<MeOut>("/api/account", {
+      method: "PUT",
+      body: JSON.stringify({ account_type, company }),
+    }),
+
+  // candidate insights + employer-discovery consent
+  getInsights: () => request<InsightsOut>("/api/candidate/insights"),
+  setDiscoverable: (discoverable: boolean) =>
+    request<{ discoverable: boolean }>("/api/candidate/discoverable", {
+      method: "PUT",
+      body: JSON.stringify({ discoverable }),
+    }),
+
+  // employer (Uche)
+  postJob: (body: {
+    title: string;
+    company: string;
+    location: string;
+    description: string;
+    remote: boolean;
+    url?: string | null;
+  }) => request<EmployerJob>("/api/employer/jobs", { method: "POST", body: JSON.stringify(body) }),
+  employerJobs: () => request<EmployerJob[]>("/api/employer/jobs"),
+  curatedCandidates: (jobId: number) =>
+    request<Shortlist>(`/api/employer/jobs/${jobId}/candidates`),
+  requestIntro: (job_id: number, candidate_id: string, message: string | null) =>
+    request<{ intro_id: string; status: string; already_requested: boolean }>(
+      "/api/employer/intros",
+      { method: "POST", body: JSON.stringify({ job_id, candidate_id, message }) },
+    ),
+  employerIntros: () => request<EmployerIntro[]>("/api/employer/intros"),
 
   // runs
   createRun: (body: {

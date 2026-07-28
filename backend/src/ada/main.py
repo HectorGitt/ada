@@ -5,10 +5,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ada.api.routes import (
+    account,
     applications,
     auth,
+    candidate,
     chat,
     documents,
+    employer,
     health,
     jobs,
     memories,
@@ -55,6 +58,9 @@ def create_app() -> FastAPI:
     app.include_router(jobs.router, prefix="/api")
     app.include_router(applications.router, prefix="/api")
     app.include_router(subscriptions.router, prefix="/api")
+    app.include_router(account.router, prefix="/api")
+    app.include_router(candidate.router, prefix="/api")
+    app.include_router(employer.router, prefix="/api")
     app.include_router(runs.router, prefix="/api")
     app.include_router(webhooks.router, prefix="/api")
     app.include_router(voice.router, prefix="/api")

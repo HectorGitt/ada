@@ -70,7 +70,7 @@ export default function OpengraphImage() {
             fontFamily: "sans-serif",
           }}
         >
-          <span>₦2,000 / $15 per run · or go unlimited</span>
+          <span>Pay per run, or go unlimited</span>
           <span>For every career</span>
         </div>
       </div>

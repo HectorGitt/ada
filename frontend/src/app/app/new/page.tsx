@@ -24,7 +24,7 @@ type Step = (typeof STEPS)[number];
 
 const PROVIDERS = [
   { value: "paystack", name: "Paystack", price: "₦2,000", detail: "Nigeria · cards, transfer, USSD" },
-  { value: "stripe", name: "Card via Stripe", price: "$15", detail: "Everywhere else · all major cards" },
+  { value: "stripe", name: "Card via Stripe", price: "$9.99", detail: "Everywhere else · all major cards" },
 ] as const;
 
 interface Saved {

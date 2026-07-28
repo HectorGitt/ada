@@ -22,3 +22,10 @@ async def current_user(user: User | None = Depends(optional_user)) -> User:
     if user is None:
         raise HTTPException(status_code=401, detail="not authenticated")
     return user
+
+
+async def current_employer(user: User = Depends(current_user)) -> User:
+    """Gate for Uche's employer surface — candidates can't reach hiring routes."""
+    if user.account_type != "employer":
+        raise HTTPException(status_code=403, detail="This area is for employer accounts.")
+    return user

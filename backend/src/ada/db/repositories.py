@@ -18,6 +18,8 @@ from ada.db.models import (
     Application,
     ApplicationStatus,
     ChatTurn,
+    Intro,
+    IntroStatus,
     Job,
     ProcessedEvent,
     Profile,
@@ -26,6 +28,7 @@ from ada.db.models import (
     Subscription,
     SubscriptionStatus,
     UploadedDocument,
+    User,
     UserMemory,
 )
 
@@ -212,6 +215,45 @@ class ProfileRepository:
             raise RuntimeError(f"profile missing immediately after upsert for {user_id}")
         return profile
 
+    async def set_discoverable(self, user_id: str, discoverable: bool) -> None:
+        await self._s.execute(
+            update(Profile).where(Profile.user_id == user_id).values(discoverable=discoverable)
+        )
+        await self._s.commit()
+
+    async def set_analysis(
+        self,
+        user_id: str,
+        *,
+        embedding: list[float] | None,
+        insights: dict[str, Any] | None,
+        headline: str | None,
+        location: str | None,
+    ) -> None:
+        """Persist Ada's structured analysis + the candidate search vector."""
+        await self._s.execute(
+            update(Profile)
+            .where(Profile.user_id == user_id)
+            .values(embedding=embedding, insights=insights, headline=headline, location=location)
+        )
+        await self._s.commit()
+
+    async def search_candidates(
+        self, embedding: list[float], k: int, *, exclude: str | None = None
+    ) -> list[tuple[Profile, float]]:
+        """Discoverable, embedded candidates nearest to a role vector (cosine)."""
+        distance = Profile.embedding.cosine_distance(embedding).label("distance")
+        stmt = (
+            select(Profile, distance)
+            .where(Profile.discoverable.is_(True), Profile.embedding.is_not(None))
+            .order_by(distance)
+            .limit(k)
+        )
+        if exclude is not None:
+            stmt = stmt.where(Profile.user_id != exclude)
+        rows = (await self._s.execute(stmt)).all()
+        return [(row[0], float(row[1])) for row in rows]
+
 
 class JobRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -219,6 +261,26 @@ class JobRepository:
 
     async def get(self, job_id: int) -> Job | None:
         return await self._s.get(Job, job_id)
+
+    async def create_posting(self, job: Job) -> Job:
+        """An employer-posted role (source='employer', posted_by set). Joins the pool."""
+        self._s.add(job)
+        await self._s.commit()
+        await self._s.refresh(job)
+        return job
+
+    async def list_by_poster(self, user_id: str, *, limit: int = 100) -> list[Job]:
+        stmt = (
+            select(Job)
+            .where(Job.posted_by == user_id)
+            .order_by(Job.id.desc())
+            .limit(limit)
+        )
+        return list((await self._s.execute(stmt)).scalars().all())
+
+    async def set_embedding(self, job_id: int, embedding: list[float]) -> None:
+        await self._s.execute(update(Job).where(Job.id == job_id).values(embedding=embedding))
+        await self._s.commit()
 
     async def count(self) -> int:
         return (await self._s.execute(select(func.count(Job.id)))).scalar_one()
@@ -587,3 +649,67 @@ class SubscriptionRepository:
         matched = (await self._s.execute(stmt)).scalar_one_or_none() is not None
         await self._s.commit()
         return matched
+
+
+class UserRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def get(self, user_id: str) -> User | None:
+        return await self._s.get(User, user_id)
+
+    async def set_account(
+        self, user_id: str, *, account_type: str, company: str | None
+    ) -> None:
+        await self._s.execute(
+            update(User)
+            .where(User.id == user_id)
+            .values(account_type=account_type, company=company)
+        )
+        await self._s.commit()
+
+
+class IntroRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def create(
+        self, *, intro_id: str, employer_id: str, candidate_id: str, job_id: int,
+        message: str | None,
+    ) -> tuple[Intro, bool]:
+        """Idempotent per (employer, candidate, job): re-requesting returns the existing row."""
+        stmt = (
+            insert(Intro)
+            .values(
+                id=intro_id, employer_id=employer_id, candidate_id=candidate_id,
+                job_id=job_id, message=message, status=IntroStatus.REQUESTED,
+            )
+            .on_conflict_do_nothing(constraint="uq_intro")
+            .returning(Intro.id)
+        )
+        created = (await self._s.execute(stmt)).scalar_one_or_none() is not None
+        await self._s.commit()
+        existing = (
+            await self._s.execute(
+                select(Intro).where(
+                    Intro.employer_id == employer_id,
+                    Intro.candidate_id == candidate_id,
+                    Intro.job_id == job_id,
+                )
+            )
+        ).scalar_one()
+        return existing, created
+
+    async def list_for_employer(self, employer_id: str) -> list[Intro]:
+        stmt = (
+            select(Intro)
+            .where(Intro.employer_id == employer_id)
+            .order_by(Intro.created_at.desc())
+        )
+        return list((await self._s.execute(stmt)).scalars().all())
+
+    async def requested_candidate_ids(self, employer_id: str, job_id: int) -> set[str]:
+        stmt = select(Intro.candidate_id).where(
+            Intro.employer_id == employer_id, Intro.job_id == job_id
+        )
+        return set((await self._s.execute(stmt)).scalars().all())

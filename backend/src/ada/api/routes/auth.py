@@ -127,8 +127,8 @@ async def reset(
 
 
 @router.get("/me")
-async def me(user: User = Depends(current_user)) -> dict[str, str]:
-    return {"email": user.email}
+async def me(user: User = Depends(current_user)) -> dict[str, str | None]:
+    return {"email": user.email, "account_type": user.account_type, "company": user.company}
 
 
 @router.post("/logout")

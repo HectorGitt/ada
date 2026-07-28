@@ -38,8 +38,8 @@ CATALOG: dict[str, Plan] = {
             "One-click apply — Ada submits the employer's form for you",
             "Ask Ada, grounded in your profile and runs",
         ),
-        monthly=Price(ngn_kobo=500_000, usd_cents=500),
-        annual=Price(ngn_kobo=5_000_000, usd_cents=5_000),
+        monthly=Price(ngn_kobo=500_000, usd_cents=1_900),
+        annual=Price(ngn_kobo=5_000_000, usd_cents=19_000),
     ),
     PREMIUM: Plan(
         tier=PREMIUM,
@@ -50,8 +50,8 @@ CATALOG: dict[str, Plan] = {
             "Live voice conversations & spoken mock interviews",
             "Priority processing and a weekly best-fit job digest",
         ),
-        monthly=Price(ngn_kobo=1_200_000, usd_cents=1_200),
-        annual=Price(ngn_kobo=12_000_000, usd_cents=12_000),
+        monthly=Price(ngn_kobo=1_200_000, usd_cents=3_900),
+        annual=Price(ngn_kobo=12_000_000, usd_cents=39_000),
     ),
 }
 

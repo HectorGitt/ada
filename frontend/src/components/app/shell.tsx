@@ -16,9 +16,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState } from "react";
 
 import { Logo, Spinner, ThemeToggle } from "@/components/ui";
-import { api } from "@/lib/api";
+import { api, type MeOut } from "@/lib/api";
 
-const AuthContext = createContext<{ email: string } | null>(null);
+const AuthContext = createContext<MeOut | null>(null);
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth outside AppShell");
@@ -89,7 +89,7 @@ const isActive = (pathname: string, item: { href: string; exact?: boolean }) =>
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [user, setUser] = useState<{ email: string } | null>(null);
+  const [user, setUser] = useState<MeOut | null>(null);
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {

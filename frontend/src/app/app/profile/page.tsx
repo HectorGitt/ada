@@ -4,6 +4,7 @@ import { Brain, Check, LogOut, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { CandidateInsights } from "@/components/app/insights";
 import { useAuth } from "@/components/app/shell";
 import {
   Button,
@@ -158,6 +159,8 @@ export default function ProfilePage() {
         title="Profile."
         subtitle="The more Ada knows about your background, the sharper her advice, rewrites, and matches get."
       />
+
+      <CandidateInsights />
 
       <Card className="mb-6 p-6">
         <form onSubmit={saveIdentity} className="space-y-5">
