@@ -11,11 +11,14 @@ export function middleware(request: NextRequest) {
   if (!UCHE_HOSTS.has(host)) return NextResponse.next();
 
   const { pathname } = request.nextUrl;
-  // API, assets, and already-/hire paths pass through untouched.
+  // API, assets, shared auth pages, and already-/hire paths pass through untouched
+  // (login/auth are one shared flow for both products — only the branding adapts).
   if (
     pathname.startsWith("/hire") ||
     pathname.startsWith("/api") ||
     pathname.startsWith("/_next") ||
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/auth") ||
     pathname.includes(".")
   ) {
     return NextResponse.next();

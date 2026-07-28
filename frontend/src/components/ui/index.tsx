@@ -89,10 +89,20 @@ export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
   );
 }
 
+/** True on the employer subdomain (uche.*) — the same app wearing Uche's brand. */
+export function useUcheBrand(): boolean {
+  const [uche, setUche] = useState(false);
+  useEffect(() => {
+    if (window.location.hostname.startsWith("uche.")) setUche(true);
+  }, []);
+  return uche;
+}
+
 export function Logo({ className = "" }: { className?: string }) {
+  const uche = useUcheBrand();
   return (
     <span className={`display select-none text-[1.35rem] leading-none text-ink ${className}`}>
-      Ada<span className="text-accent">.</span>
+      {uche ? "Uche" : "Ada"}<span className="text-accent">.</span>
     </span>
   );
 }

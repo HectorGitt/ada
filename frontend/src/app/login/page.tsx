@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 
 import { ApiError, api } from "@/lib/api";
-import { Button, Card, Input, Label, Logo } from "@/components/ui";
+import { Button, Card, Input, Label, Logo, useUcheBrand } from "@/components/ui";
 
 type Mode = "signin" | "signup" | "forgot";
 
@@ -19,6 +19,25 @@ const COPY: Record<Mode, { title: string; sub: string; cta: string }> = {
   signup: {
     title: "Create your account",
     sub: "One account runs the whole loop — CV, matches, interview.",
+    cta: "Create account",
+  },
+  forgot: {
+    title: "Reset your password",
+    sub: "Enter your email and we'll send a reset link.",
+    cta: "Send reset link",
+  },
+};
+
+/** Same flow, employer voice — shown on the uche.* subdomain. */
+const UCHE_COPY: Record<Mode, { title: string; sub: string; cta: string }> = {
+  signin: {
+    title: "Welcome back",
+    sub: "Sign in to your hiring console.",
+    cta: "Sign in",
+  },
+  signup: {
+    title: "Create your account",
+    sub: "Post a role once — Uche screens, ranks, and preps the interviews.",
     cta: "Create account",
   },
   forgot: {
@@ -48,7 +67,8 @@ function LoginForm() {
     params.get("reset") === "done" ? "Password updated. Sign in with your new password." : "",
   );
 
-  const copy = COPY[mode];
+  const uche = useUcheBrand();
+  const copy = (uche ? UCHE_COPY : COPY)[mode];
 
   const switchMode = (next: Mode) => {
     setMode(next);
@@ -56,6 +76,15 @@ function LoginForm() {
     setSent(false);
     setPassword("");
   };
+
+  // Honor ?next= for internal paths (e.g. /hire sends employers back after signin);
+  // on the uche host the default destination is the hiring console itself.
+  const rawNext = params.get("next") ?? "";
+  const dest = rawNext.startsWith("/") && !rawNext.startsWith("//")
+    ? rawNext
+    : uche
+      ? "/hire"
+      : "/app";
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,10 +96,10 @@ function LoginForm() {
         setSent(true);
       } else if (mode === "signup") {
         await api.signup(email, password);
-        router.push("/app");
+        router.push(dest);
       } else {
         await api.login(email, password);
-        router.push("/app");
+        router.push(dest);
       }
     } catch (err) {
       setError(
@@ -188,7 +217,7 @@ function LoginForm() {
         <p className="mt-6 text-xs text-muted">
           {mode === "signin" ? (
             <>
-              New to Ada?{" "}
+              New to {uche ? "Uche" : "Ada"}?{" "}
               <button
                 onClick={() => switchMode("signup")}
                 className="font-medium text-ink underline-offset-2 hover:underline"
