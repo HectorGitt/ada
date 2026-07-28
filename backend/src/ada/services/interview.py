@@ -11,18 +11,32 @@ from pydantic import BaseModel
 
 from ada.config import get_settings
 from ada.resilience import retry_async
+from ada.services.persona import IDENTITY, SCORING_RUBRIC
 from ada.vertex import vertex_client
 
-_Q_SYSTEM = """You are Ada, a senior interviewer hiring for the candidate's target \
-role. Generate exactly {n} incisive interview questions tailored to THIS candidate's CV \
-and the target role. Mix behavioural and role-specific technical questions. Never \
-fabricate details about the candidate. Return a JSON array of question strings only."""
+_Q_SYSTEM = (
+    IDENTITY
+    + """
 
-_SCORE_SYSTEM = """You are Ada, scoring a candidate's mock-interview answers for their \
-target role. For each question/answer pair, give an integer score 0-10 judging \
-substance, structure, and relevance, plus one or two sentences of concrete, actionable \
-feedback. Judge ONLY what the candidate actually wrote — never invent facts or credit \
-experience they did not state. An empty or evasive answer scores low."""
+Task: as a senior interviewer hiring for the candidate's target role, generate \
+exactly {n} incisive interview questions tailored to THIS candidate's CV and the \
+target role. Mix behavioural, role-specific technical, and — where the role \
+warrants it — system-design, leadership, or problem-solving questions. Never \
+fabricate details about the candidate. Return a JSON array of question strings only."""
+)
+
+_SCORE_SYSTEM = (
+    IDENTITY
+    + "\n\n"
+    + SCORING_RUBRIC
+    + """
+
+Task: score the candidate's mock-interview answers for their target role. For \
+each question/answer pair give an integer score 0-10 plus one or two sentences \
+of concrete, actionable feedback. Judge ONLY what the candidate actually wrote \
+— never invent facts or credit experience they did not state. An empty or \
+evasive answer scores low."""
+)
 
 # Response schemas (pydantic models are converted by the SDK) force well-formed JSON.
 class AnswerScore(BaseModel):

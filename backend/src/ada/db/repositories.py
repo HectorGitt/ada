@@ -23,6 +23,8 @@ from ada.db.models import (
     Profile,
     Run,
     RunStatus,
+    Subscription,
+    SubscriptionStatus,
     UploadedDocument,
     UserMemory,
 )
@@ -531,3 +533,57 @@ class ChatMessageRepository:
             if turn is not None:
                 await self._s.delete(turn)
         await self._s.commit()
+
+
+class SubscriptionRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def get(self, user_id: str) -> Subscription | None:
+        return await self._s.get(Subscription, user_id)
+
+    async def activate(
+        self,
+        *,
+        user_id: str,
+        tier: str,
+        cadence: str,
+        provider: str,
+        provider_ref: str | None,
+        current_period_end: datetime | None,
+    ) -> None:
+        """Idempotent upsert to an active plan — a replayed 'created' webhook is a no-op."""
+        values = {
+            "tier": tier,
+            "status": SubscriptionStatus.ACTIVE,
+            "cadence": cadence,
+            "provider": provider,
+            "provider_ref": provider_ref,
+            "current_period_end": current_period_end,
+        }
+        stmt = insert(Subscription).values(user_id=user_id, **values)
+        stmt = stmt.on_conflict_do_update(index_elements=["user_id"], set_=values)
+        await self._s.execute(stmt)
+        await self._s.commit()
+
+    async def set_status(
+        self,
+        provider_ref: str,
+        status: SubscriptionStatus,
+        *,
+        current_period_end: datetime | None = None,
+    ) -> bool:
+        """Advance a subscription by its provider ref (renewal / past_due / cancel).
+        Returns False when no row matches, so a stray event is a safe no-op."""
+        values: dict[str, Any] = {"status": status}
+        if current_period_end is not None:
+            values["current_period_end"] = current_period_end
+        stmt = (
+            update(Subscription)
+            .where(Subscription.provider_ref == provider_ref)
+            .values(**values)
+            .returning(Subscription.user_id)
+        )
+        matched = (await self._s.execute(stmt)).scalar_one_or_none() is not None
+        await self._s.commit()
+        return matched

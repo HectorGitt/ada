@@ -246,10 +246,17 @@ summary,
   animation: eq 1s ease-in-out infinite;
 }
 
+/* Voice-intro waveform: a gentle, premium breathing of the played bars */
+@keyframes vi-wave {
+  0%, 100% { transform: scaleY(0.82); }
+  50% { transform: scaleY(1.12); }
+}
+.vi-bar-live { animation: vi-wave 1.15s ease-in-out infinite; transform-origin: center; }
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .pulse-soft, .skeleton, .marquee-track, .ring-ping, .caret-blink, .float-y,
-  .eq-bar {
+  .eq-bar, .vi-bar-live {
     animation: none;
   }
   * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }

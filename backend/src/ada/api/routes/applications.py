@@ -13,8 +13,10 @@ from ada.db.repositories import (
     JobRepository,
     ProfileRepository,
     RunRepository,
+    SubscriptionRepository,
 )
 from ada.db.session import get_session
+from ada.services import entitlements
 from ada.services.apply import (
     ApplyPrecondition,
     build_answers,
@@ -72,6 +74,11 @@ async def apply_to_job(
     user: User = Depends(current_user),
 ) -> ApplyOut:
     applications = ApplicationRepository(session)
+    subscription = await SubscriptionRepository(session).get(user.id)
+    if not entitlements.resolve(subscription).can_apply:
+        raise HTTPException(
+            402, "One-click apply is a Pro feature — upgrade and Ada will apply for you."
+        )
     job = await JobRepository(session).get(job_id)
     if job is None:
         raise HTTPException(404, "Job not found.")

@@ -188,3 +188,34 @@ class Application(Base):
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SubscriptionStatus(StrEnum):
+    ACTIVE = "active"
+    PAST_DUE = "past_due"
+    CANCELED = "canceled"
+
+
+class Subscription(Base):
+    """A user's recurring plan. One row per user; provider webhooks drive its status.
+
+    The recurring analogue of the one-off Run payment. Entitlements are derived from
+    `tier` while `status == ACTIVE` (or PAST_DUE within grace); never trusted from the
+    client. provider_ref is the Paystack subscription code / Stripe subscription id.
+    """
+    __tablename__ = "subscriptions"
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    tier: Mapped[str] = mapped_column(String(16), default="free")
+    status: Mapped[SubscriptionStatus] = mapped_column(
+        String(16), default=SubscriptionStatus.ACTIVE, index=True
+    )
+    cadence: Mapped[str] = mapped_column(String(16), default="monthly")
+    provider: Mapped[str] = mapped_column(String(16), default="paystack")
+    provider_ref: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    current_period_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

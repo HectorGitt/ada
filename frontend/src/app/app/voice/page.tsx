@@ -1,17 +1,37 @@
 "use client";
 
 import { Mic, MicOff, PhoneOff } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
 
 import { Button, Card, PageHeader } from "@/components/ui";
 import { voiceWsUrl } from "@/lib/api";
 import { createVoicePlayer, startMic, type MicSession, type VoicePlayer } from "@/lib/audio";
 
-type CallState = "idle" | "connecting" | "live" | "extracting" | "error";
+type CallState = "idle" | "connecting" | "live" | "ending" | "error";
+type Mode = "conversation" | "interview";
 
-export default function VoicePage() {
-  const router = useRouter();
+const COPY: Record<Mode, { title: string; subtitle: string; cta: string; live: string }> = {
+  conversation: {
+    title: "Talk to Ada.",
+    subtitle:
+      "A real spoken conversation — Ada already knows your background, so she picks up where you are. Interrupt her any time.",
+    cta: "Start the conversation",
+    live: "Just talk — Ada replies out loud. Interrupt any time.",
+  },
+  interview: {
+    title: "Mock interview.",
+    subtitle:
+      "A realistic spoken interview for your target role, grounded in your background — with honest feedback at the end.",
+    cta: "Start the interview",
+    live: "Answer out loud — Ada follows up like a real interviewer.",
+  },
+};
+
+function VoiceCall() {
+  const mode: Mode =
+    useSearchParams().get("mode") === "interview" ? "interview" : "conversation";
+  const copy = COPY[mode];
   const [state, setState] = useState<CallState>("idle");
   const [error, setError] = useState("");
   const [seconds, setSeconds] = useState(0);
@@ -19,7 +39,6 @@ export default function VoicePage() {
   const micRef = useRef<MicSession | null>(null);
   const playerRef = useRef<VoicePlayer | null>(null);
 
-  // Session clock, shown in the eyebrow while Ada listens.
   useEffect(() => {
     if (state !== "live") return;
     const id = setInterval(() => setSeconds((s) => s + 1), 1000);
@@ -42,7 +61,7 @@ export default function VoicePage() {
     setError("");
     setSeconds(0);
     try {
-      const ws = new WebSocket(voiceWsUrl());
+      const ws = new WebSocket(voiceWsUrl(mode));
       wsRef.current = ws;
 
       ws.onopen = async () => {
@@ -65,25 +84,26 @@ export default function VoicePage() {
         const msg = JSON.parse(event.data as string) as {
           type: string;
           data?: string;
-          target_role?: string;
-          cv_text?: string;
           message?: string;
         };
         if (msg.type === "audio" && msg.data) {
           playerRef.current?.play(msg.data);
         } else if (msg.type === "interrupt") {
           playerRef.current?.clear();
-        } else if (msg.type === "intake") {
-          localStorage.setItem(
-            "ada.intake-draft",
-            JSON.stringify({ target_role: msg.target_role, cv_text: msg.cv_text }),
-          );
+        } else if (msg.type === "ended") {
           cleanup();
-          router.push("/app/new");
+          setState("idle");
         } else if (msg.type === "error") {
           setError(msg.message ?? "Ada's voice is unavailable right now.");
           setState("error");
           cleanup();
+        }
+      };
+
+      ws.onclose = () => {
+        if (wsRef.current) {
+          cleanup();
+          setState((s) => (s === "error" ? s : "idle"));
         }
       };
 
@@ -101,19 +121,17 @@ export default function VoicePage() {
     micRef.current?.stop();
     micRef.current = null;
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      setState("extracting");
+      setState("ending");
       wsRef.current.send(JSON.stringify({ type: "end" }));
     } else {
+      cleanup();
       setState("idle");
     }
   };
 
   return (
     <>
-      <PageHeader
-        title="Talk to Ada."
-        subtitle="A real spoken conversation — Ada asks about your background out loud, you answer, and she drafts your run. Interrupt her any time."
-      />
+      <PageHeader title={copy.title} subtitle={copy.subtitle} />
 
       {state === "idle" || state === "error" ? (
         <Card className="flex flex-col items-center gap-6 p-10">
@@ -122,19 +140,11 @@ export default function VoicePage() {
           </div>
           {error && <p className="text-center text-sm text-danger">{error}</p>}
           <Button onClick={start} className="!px-7 !py-3">
-            Start the conversation
+            {copy.cta}
           </Button>
-          <p className="text-center text-xs text-muted">
-            Uses your microphone. Prefer typing? Use{" "}
-            <a href="/app/new" className="underline underline-offset-2 transition-colors hover:text-ink">
-              the form
-            </a>
-            .
-          </p>
+          <p className="text-center text-xs text-muted">Uses your microphone.</p>
         </Card>
       ) : (
-        /* Live session: always dark, whatever the app theme — hardcoded to the
-           dark palette per the mobile design canvas ("Voice session · dark"). */
         <div className="relative overflow-hidden rounded-card border border-[#2b2925] bg-[#12110e] text-[#f2f0ea] shadow-lift">
           <div
             className="pointer-events-none absolute left-1/2 top-8 size-80 -translate-x-1/2 rounded-full bg-[#8b85f4]/15 blur-3xl"
@@ -142,12 +152,23 @@ export default function VoicePage() {
           />
           <div className="relative flex flex-col items-center px-7 pb-7 pt-10 text-center">
             <p className="eyebrow mb-2 !text-[#a09a8c]">
-              In conversation{state === "live" ? ` · ${clock}` : ""}
+              {mode === "interview" ? "Interview" : "In conversation"}
+              {state === "live" ? ` · ${clock}` : ""}
             </p>
             <h2 className="display mb-9 text-3xl">
-              Talking with Ada
-              <br />
-              about your work.
+              {mode === "interview" ? (
+                <>
+                  Interviewing
+                  <br />
+                  with Ada.
+                </>
+              ) : (
+                <>
+                  Talking with Ada
+                  <br />
+                  about your work.
+                </>
+              )}
             </h2>
             <div className="relative mb-8 size-32">
               {state === "live" &&
@@ -186,31 +207,29 @@ export default function VoicePage() {
             )}
             <p className="text-sm text-[#a09a8c]">
               {state === "connecting" && "Connecting to Ada..."}
-              {state === "live" && "Just talk — Ada replies out loud. Interrupt any time."}
-              {state === "extracting" && "Wrapping up — drafting your run..."}
+              {state === "live" && copy.live}
+              {state === "ending" && "Ending — saving what you shared..."}
             </p>
-            <div className="mt-8 flex w-full gap-2.5">
-              <button
-                onClick={() => {
-                  cleanup();
-                  setState("idle");
-                }}
-                disabled={state === "extracting"}
-                className="flex-1 rounded-full border border-[#2b2925] bg-[#1a1916] py-3 text-sm font-medium text-[#a09a8c] transition-colors hover:text-[#f2f0ea] disabled:opacity-50"
-              >
-                Cancel
-              </button>
+            <div className="mt-8 flex w-full justify-center">
               <button
                 onClick={end}
-                disabled={state === "extracting"}
-                className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[#8b85f4] py-3 text-sm font-medium text-[#12110e] shadow-[0_4px_14px_rgba(139,133,244,0.25)] transition-opacity hover:opacity-90 disabled:opacity-50"
+                disabled={state === "ending"}
+                className="flex items-center justify-center gap-2 rounded-full bg-[#8b85f4] px-8 py-3 text-sm font-medium text-[#12110e] shadow-[0_4px_14px_rgba(139,133,244,0.25)] transition-opacity hover:opacity-90 disabled:opacity-50"
               >
-                <PhoneOff className="size-4" /> End &amp; draft my run
+                <PhoneOff className="size-4" /> End call
               </button>
             </div>
           </div>
         </div>
       )}
     </>
+  );
+}
+
+export default function VoicePage() {
+  return (
+    <Suspense>
+      <VoiceCall />
+    </Suspense>
   );
 }

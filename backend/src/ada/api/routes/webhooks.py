@@ -16,6 +16,12 @@ from ada.observability import emit_run_log, log
 from ada.payments.paystack import verify_signature, verify_transaction
 from ada.payments.stripe import verify_and_parse
 from ada.services.runs import execute_run
+from ada.services.subscriptions import (
+    handle_paystack,
+    handle_stripe,
+    is_paystack_subscription,
+    is_stripe_subscription,
+)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
@@ -52,6 +58,8 @@ async def paystack(
         raise HTTPException(status_code=401, detail="bad signature")
 
     event = await request.json()
+    if is_paystack_subscription(event):
+        return await handle_paystack(session, event)
     if event.get("event") != "charge.success":
         return {"status": "ignored"}
 
@@ -91,6 +99,8 @@ async def stripe(
     except Exception as exc:  # noqa: BLE001 — any verification failure is a 400
         raise HTTPException(status_code=400, detail="bad signature") from exc
 
+    if is_stripe_subscription(event):
+        return await handle_stripe(session, event)
     if event["type"] != "checkout.session.completed":
         return {"status": "ignored"}
 

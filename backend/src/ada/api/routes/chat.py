@@ -16,6 +16,7 @@ from ada.db.repositories import (
     UserMemoryRepository,
 )
 from ada.db.session import get_session
+from ada.observability import log
 from ada.services.coach import CoachService
 from ada.services.memory import MemoryService
 
@@ -67,8 +68,8 @@ async def chat(
             if reply:
                 await history.append(user.id, "assistant", reply)
             await history.prune(user.id)
-        except Exception:  # noqa: BLE001 — history must not break the stream
-            pass
+        except Exception as exc:  # noqa: BLE001 — history must not break the stream
+            log.warning("chat_history_persist_failed", user_id=user.id, error=str(exc))
         exchange = f"Candidate: {last_user_message}\nAda: {reply}"
         await memory.remember(memories_repo, user.id, exchange)
 

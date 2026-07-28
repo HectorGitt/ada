@@ -127,7 +127,7 @@ export function DeliverablesShowcase() {
       <div className="lg:pt-28">
         <Reveal>
           <Eyebrow>What you get</Eyebrow>
-          <h2 className="display fluid-h2">One payment. Three deliverables.</h2>
+          <h2 className="display fluid-h2">One run. Three deliverables.</h2>
         </Reveal>
       </div>
 

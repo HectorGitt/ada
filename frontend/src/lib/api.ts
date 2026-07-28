@@ -10,6 +10,30 @@ export interface CreateRunOut {
   amount: number | null;
   currency: string | null;
   checkout_url: string | null;
+  entitled: boolean;
+}
+
+export interface PlanPrice {
+  ngn_kobo: number;
+  usd_cents: number;
+}
+
+export interface Plan {
+  tier: "pro" | "premium";
+  name: string;
+  tagline: string;
+  features: string[];
+  monthly: PlanPrice;
+  annual: PlanPrice;
+}
+
+export interface SubscriptionState {
+  tier: "free" | "pro" | "premium";
+  status: string;
+  cadence: "monthly" | "annual";
+  current_period_end: string | null;
+  can_apply: boolean;
+  can_voice: boolean;
 }
 
 export interface Match {
@@ -249,6 +273,17 @@ export const api = {
       body: JSON.stringify({ full_name, phone }),
     }),
 
+  // subscriptions
+  getPlans: () => request<Plan[]>("/api/plans"),
+  getSubscription: () => request<SubscriptionState>("/api/subscription"),
+  startSubscription: (tier: string, cadence: string, provider: "paystack" | "stripe") =>
+    request<{ checkout_url: string }>("/api/subscriptions", {
+      method: "POST",
+      body: JSON.stringify({ tier, cadence, provider }),
+    }),
+  cancelSubscription: () =>
+    request<{ status: string }>("/api/subscriptions/cancel", { method: "POST" }),
+
   // profile
   getProfile: () => request<Profile | null>("/api/profile"),
   putProfile: (body: { profile_text: string; linkedin_url?: string | null }) =>
@@ -295,11 +330,12 @@ export async function streamChat(
 }
 
 /** Backend WebSocket base for the voice intake (rewrites don't proxy upgrades). */
-export function voiceWsUrl(): string {
+export function voiceWsUrl(mode?: "conversation" | "interview"): string {
   const base =
     process.env.NEXT_PUBLIC_WS_URL ??
     (typeof window !== "undefined"
       ? `${window.location.protocol === "https:" ? "wss" : "ws"}://localhost:8080`
       : "ws://localhost:8080");
-  return `${base}/api/voice`;
+  const query = mode === "interview" ? "?mode=interview" : "";
+  return `${base}/api/voice${query}`;
 }

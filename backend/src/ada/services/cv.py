@@ -6,15 +6,17 @@ from google.genai import types
 
 from ada.config import get_settings
 from ada.resilience import retry_async
+from ada.services.persona import CV_CRAFT, IDENTITY
 from ada.vertex import vertex_client
 
-_SYSTEM = """You are Ada, an expert technical resume writer specialising in \
-ATS (Applicant Tracking System) optimisation. Rewrite the candidate's CV so it \
-is tightly targeted to the stated role. Rules:
+_SYSTEM = f"""{IDENTITY}
+
+{CV_CRAFT}
+
+Task: rewrite the candidate's CV so it is tightly targeted to the stated role.
 - Lead with a 2-3 line professional summary aimed at the target role.
 - Use standard ATS-safe section headers (Summary, Skills, Experience, Education).
-- Turn duties into achievement bullets with concrete metrics where the source \
-implies them; never invent facts, numbers, employers, or dates.
+- Never invent facts, numbers, employers, or dates.
 - Mirror the vocabulary a recruiter for this role would search for.
 - Output clean Markdown only — no commentary, no code fences."""
 

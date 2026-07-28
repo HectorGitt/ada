@@ -10,7 +10,7 @@ Access control: a run owned by a user is visible only to that user; unowned runs
 """
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,11 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ada.auth.dependencies import current_user, optional_user
 from ada.config import get_settings
 from ada.db.models import Run, RunStatus, User
-from ada.db.repositories import RunRepository
+from ada.db.repositories import RunRepository, SubscriptionRepository
 from ada.db.session import get_session
 from ada.payments.stripe import create_checkout
+from ada.services import entitlements
 from ada.services.interview import InterviewService
-from ada.services.runs import create_pending_run
+from ada.services.runs import create_pending_run, execute_run
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
@@ -45,6 +46,8 @@ class CreateRunOut(BaseModel):
     currency: str | None = None
     # stripe (redirect)
     checkout_url: str | None = None
+    # true when the subscription covered the run — no payment needed, already dispatched
+    entitled: bool = False
 
 
 class RunSummaryOut(BaseModel):
@@ -80,14 +83,32 @@ def _authorize(run: Run, user: User | None) -> None:
 @router.post("", response_model=CreateRunOut)
 async def create_run(
     body: CreateRunIn,
+    background: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     user: User | None = Depends(optional_user),
 ) -> CreateRunOut:
     s = get_settings()
     amount = s.price_kobo if body.provider == "paystack" else s.stripe_price_usd_cents
     currency = s.currency if body.provider == "paystack" else "USD"
+    runs = RunRepository(session)
+
+    # A subscriber's plan covers the run: skip payment, mark PAID, dispatch now.
+    if user is not None:
+        subscription = await SubscriptionRepository(session).get(user.id)
+        if entitlements.resolve(subscription).included_runs:
+            run = await create_pending_run(
+                session_runs=runs, provider=body.provider, amount=0, currency=currency,
+                email=body.email, target_role=body.target_role, cv_text=body.cv_text,
+                transcript=body.transcript, user_id=user.id,
+            )
+            await runs.set_status(run, RunStatus.PAID)
+            background.add_task(execute_run, run.id)
+            return CreateRunOut(
+                run_id=run.id, reference=run.reference, provider=body.provider, entitled=True
+            )
+
     run = await create_pending_run(
-        session_runs=RunRepository(session), provider=body.provider,
+        session_runs=runs, provider=body.provider,
         amount=amount, currency=currency, email=body.email,
         target_role=body.target_role, cv_text=body.cv_text, transcript=body.transcript,
         user_id=user.id if user else None,

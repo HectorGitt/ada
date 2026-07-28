@@ -22,6 +22,49 @@ function AdaMark() {
   );
 }
 
+/** Detect when the user is asking to speak with Ada or to practice an interview,
+ *  so we can offer a voice call inline instead of making them find the page. */
+function detectVoiceCue(text: string): "conversation" | "interview" | null {
+  const t = text.toLowerCase();
+  const wantsInterview =
+    /\b(interview|mock|grill me|rehearse)\b/.test(t) ||
+    (/\bpractice\b/.test(t) && /\b(question|answer|role|job|interview)\b/.test(t));
+  if (wantsInterview) return "interview";
+  const wantsVoice =
+    /\b(voice|out ?loud|speak|call)\b/.test(t) ||
+    /\b(talk|say) (it|this|that|to you|it through)\b/.test(t) ||
+    /\b(hop on|jump on|get on) a? ?call\b/.test(t);
+  return wantsVoice ? "conversation" : null;
+}
+
+function VoiceCue({ mode }: { mode: "conversation" | "interview" }) {
+  const interview = mode === "interview";
+  return (
+    <div className="flex gap-3">
+      <AdaMark />
+      <Link
+        href={interview ? "/app/voice?mode=interview" : "/app/voice"}
+        className="group flex max-w-[88%] items-center gap-3.5 rounded-2xl rounded-tl-md border border-accent/30 bg-accent-soft/50 px-4 py-3 transition-colors hover:border-accent"
+      >
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-ink">
+          <Mic className="size-4" />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-sm font-medium">
+            {interview ? "Practice out loud with a mock interview" : "Talk it through with Ada"}
+          </span>
+          <span className="block text-xs text-muted">
+            {interview
+              ? "A live spoken interview for your target role — tap to start."
+              : "Skip the typing — have a real voice conversation. Tap to start."}
+          </span>
+        </span>
+        <ArrowUp className="size-4 shrink-0 rotate-45 text-muted transition-transform group-hover:translate-x-0.5" />
+      </Link>
+    </div>
+  );
+}
+
 export default function CoachPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -116,6 +159,12 @@ export default function CoachPage() {
   };
 
   const empty = messages.length === 0;
+  // Offer a voice call once Ada has replied to a message that asked to speak or interview.
+  const lastUser = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+  const voiceCue =
+    !streaming && messages.at(-1)?.role === "assistant" && messages.at(-1)?.content
+      ? detectVoiceCue(lastUser)
+      : null;
 
   return (
     <div className="flex h-[calc(100dvh-9rem)] flex-col lg:h-[calc(100dvh-7rem)]">
@@ -203,6 +252,7 @@ export default function CoachPage() {
             )}
           </div>
         ))}
+        {voiceCue && <VoiceCue mode={voiceCue} />}
         <div ref={endRef} />
       </div>
 

@@ -10,13 +10,20 @@ from google.genai import types
 
 from ada.config import get_settings
 from ada.db.models import Profile, Run
+from ada.services.persona import COACHING, IDENTITY
 from ada.vertex import vertex_client
 
-_SYSTEM = """You are Ada, a sharp, warm career coach. You know the candidate from their \
-imported profile and their history with you (CV rewrites, job matches, interview scores) \
-— use it, cite it, and be specific to them. Give direct, actionable advice; push back \
-when the candidate's plan doesn't serve them. Never invent facts about their experience. \
-If their profile lacks something important, say what to add. Keep answers tight."""
+_SYSTEM = (
+    IDENTITY
+    + "\n\n"
+    + COACHING
+    + """
+
+You know this candidate from their imported profile and their history with you \
+(CV rewrites, job matches, interview scores) — use it, cite it, and be specific \
+to them. If their profile lacks something important, say what to add. Keep \
+answers tight."""
+)
 
 _MAX_TURNS = 30
 

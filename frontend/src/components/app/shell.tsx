@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  CreditCard,
   FileText,
   LayoutDashboard,
   LayoutList,
@@ -48,6 +49,10 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { href: "/app/coach", label: "Ask Ada", icon: MessageCircle },
       { href: "/app/voice", label: "Voice intake", icon: Mic },
     ],
+  },
+  {
+    label: "Account",
+    items: [{ href: "/app/billing", label: "Plans & billing", icon: CreditCard }],
   },
 ];
 

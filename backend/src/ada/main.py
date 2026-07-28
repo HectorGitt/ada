@@ -14,6 +14,7 @@ from ada.api.routes import (
     memories,
     profile,
     runs,
+    subscriptions,
     voice,
     webhooks,
 )
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router, prefix="/api")
     app.include_router(jobs.router, prefix="/api")
     app.include_router(applications.router, prefix="/api")
+    app.include_router(subscriptions.router, prefix="/api")
     app.include_router(runs.router, prefix="/api")
     app.include_router(webhooks.router, prefix="/api")
     app.include_router(voice.router, prefix="/api")
