@@ -1,52 +1,111 @@
-# Ada frontend
+# Ada · Uche — frontend
 
-Next.js 15 (App Router, TypeScript, Tailwind v4) — the landing page and the product.
-All `/api/*` calls are proxied to the backend (`next.config.ts` rewrites), so the
-session cookie is first-party and CORS never applies. The voice page connects straight
-to the backend WebSocket (`NEXT_PUBLIC_WS_URL`) because rewrites don't carry upgrades.
+**One Next.js 15 app serving two products.** Ada (candidates) and Uche (employers) share a
+codebase, a design system, and an auth flow; a host-based middleware decides which product a
+request sees. Built with the App Router, React 19, TypeScript, and Tailwind v4.
+
+- All `/api/*` calls are proxied to the backend (`next.config.ts` rewrites), so the session
+  cookie is **first-party** and CORS never applies.
+- The voice page connects straight to the backend **WebSocket** (`NEXT_PUBLIC_WS_URL`) —
+  rewrites don't carry protocol upgrades.
+
+---
+
+## Two products, one app
+
+```mermaid
+flowchart TB
+    req["Incoming request"] --> mw{"middleware.ts<br/>host === uche.*?"}
+    mw -->|"no · ada.recrulus.com"| ada["Ada landing (/)<br/>+ candidate app (/app/*)"]
+    mw -->|"yes · uche.recrulus.com"| rewrite["rewrite → /hire tree"]
+    rewrite --> uche["Uche landing (/hire/home)<br/>+ employer console (/hire/*)"]
+    ada --> shared["Shared: /login · /auth/reset · /api proxy"]
+    uche --> shared
+```
+
+`middleware.ts` rewrites the `uche.*` host into the `/hire` tree while letting
+`/login`, `/auth`, `/api`, and assets pass through — auth is one shared flow, only the
+branding adapts. Locally: Ada is `localhost:3000`, Uche is `uche.localhost:3000`.
+
+---
 
 ## Routes
 
+### Ada — candidate (`/app/*`, behind the app shell)
+
 ```
-/                        landing: hero with live self-running demo, capability cards,
-                         how-it-works, pricing, FAQs
-/login                   email + password sign in / sign up / forgot
-/auth/reset              set a new password from an emailed reset link
-/app                     auth-gated shell (sidebar) -> redirects to /app/runs
-/app/new                 intake -> Paystack inline / Stripe redirect -> live progress
-/app/runs                run history            /app/runs/[id]   CV + matches + questions
-/app/runs/[id]/interview answer flow + scored feedback
-/app/coach               Ask Ada — streaming chat grounded in profile + runs
-/app/documents           every rewritten CV     /app/voice       spoken intake (Gemini Live)
-/app/profile             LinkedIn profile import, sign out
+/                          landing: hero + live self-running demo, "Hear from Ada"
+                           voice intro, capabilities, how-it-works, pricing, FAQs
+/login                     email + password — sign in / sign up / forgot (host-branded)
+/auth/reset                set a new password from an emailed reset link
+/app                       auth-gated shell → dashboard
+/app/new                   intake → Paystack inline / Stripe redirect → live run progress
+/app/runs · /app/runs/[id] run history · CV + ranked matches + interview questions
+/app/runs/[id]/interview   answer flow → scored feedback
+/app/applications          one-click apply status (Ada submits the ATS form)
+/app/coach                 Ask Ada — streaming chat grounded in profile + runs
+/app/voice                 spoken conversation with Ada (Gemini Live)
+/app/documents             every rewritten CV
+/app/intros                employers who want to connect — accept / decline
+/app/profile               profile + Ada's insight panel + "let employers find me" consent
+/app/billing               Free / Pro / Premium — monthly · annual, Paystack · Stripe
 ```
+
+### Uche — employer (`/hire/*`, behind the employer shell)
+
+```
+/hire/home                 Uche landing: "Hear from Uche" voice intro + pricing
+/hire                      Roles console — post a role → Uche's ranked shortlist → intro
+/hire/intros               intro outbox (requested / accepted / declined)
+/hire/billing              Pilot / Growth / Scale + live usage (roles / intros used)
+```
+
+---
 
 ## Structure
 
 ```
-src/lib/api.ts           typed client for every backend endpoint + SSE chat reader
-src/lib/paystack.ts      inline-checkout script loader
-src/lib/audio.ts         mic -> 16 kHz PCM16 frames (inline AudioWorklet)
-src/components/ui/       hand-built kit: Button, Card, ScoreBar, ThemeToggle, ...
-src/components/app/      auth-gated shell (sidebar, mobile bar, useAuth)
-src/components/run/      live run progress (mirrors the backend LangGraph stages)
-src/components/marketing/ self-running hero demo + scroll reveals
-src/app/globals.css      design tokens (light/dark), fluid type scale, prose styles
+src/
+  middleware.ts            host-based product routing (uche.* → /hire)
+  lib/
+    api.ts                 typed client for every backend endpoint + SSE chat reader
+    audio.ts               mic → 16 kHz PCM16 capture + 24 kHz playback (barge-in)
+    paystack.ts            inline-checkout script loader
+  components/
+    ui/                    hand-built kit: Button · Card · ScoreRing · StatusBadge · …
+    app/                   candidate shell (sidebar, mobile tab bar, useAuth) + insights
+    hire/                  employer shell (EmployerShell — mirrors the candidate app)
+    run/                   live run progress + one-click ApplyButton
+    marketing/             self-running hero demo · pricing · shared voice-intro player
+  app/                     App Router pages (see Routes)
+  app/globals.css          design tokens (light/dark), fluid type scale, prose styles
+public/                    ada-intro.mp3 · uche-intro.mp3 (Gemini-TTS agent voices)
 ```
+
+The **voice-intro player** is one shared component (`marketing/voice-intro.tsx`) rendered as
+`AdaVoiceIntro` / `UcheVoiceIntro` — so the two agents' players can never drift apart.
+`audio.ts` handles both mic capture (16 kHz PCM16 up) and gapless reply playback (24 kHz,
+with barge-in) for the live voice pages.
+
+---
 
 ## Design system
 
-Warm paper / near-black ink, single indigo accent, Instrument Serif display headlines
-over Inter UI. Fluid `clamp()` type — no breakpoint jumps. Dark mode via class toggle
-with pre-paint script (no flash). `prefers-reduced-motion` respected. No UI kit —
-tokens in CSS custom properties, components in `src/components/ui`.
+Warm paper / near-black ink, a single indigo accent, **Instrument Serif** display headlines
+over **Inter** UI. Fluid `clamp()` type — no breakpoint jumps. Dark mode via a class toggle
+with a pre-paint script (no flash of the wrong theme). `prefers-reduced-motion` respected
+throughout. No third-party UI kit — tokens live in CSS custom properties (`globals.css`) and
+components in `components/ui`. The employer shell deliberately mirrors the candidate app, so
+Uche reads as a first-class sibling to Ada, not a bolt-on.
+
+---
 
 ## Develop
 
 ```bash
 pnpm install
-pnpm dev            # http://localhost:3000, proxies to backend on :8080
-BACKEND_URL=...     # optional; defaults to http://localhost:8080
+pnpm dev                    # http://localhost:3000  (Uche: uche.localhost:3000)
+BACKEND_URL=...             # optional; defaults to http://localhost:8080
 ```
 
 ## Verify / build
@@ -58,5 +117,7 @@ pnpm build
 
 ## Deploy
 
-Any Next.js host (e.g. Vercel). Set `BACKEND_URL` (server-side proxy target) and
-`NEXT_PUBLIC_WS_URL` (public WebSocket origin, `wss://api.yourdomain`).
+Any Next.js host (e.g. Vercel), with both product subdomains pointed at it. Set:
+
+- `BACKEND_URL` — server-side `/api` proxy target
+- `NEXT_PUBLIC_WS_URL` — public WebSocket origin (`wss://api.yourdomain`) for the voice pages

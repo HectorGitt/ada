@@ -145,3 +145,73 @@ async def test_intro_is_idempotent_and_account_switch_persists():
                 await s.execute(delete(Job).where(Job.id == job_id))
             await s.execute(delete(User).where(User.id.in_([emp, cand])))
             await s.commit()
+
+
+def test_employer_entitlements_and_caps():
+    from ada.db.models import Subscription, SubscriptionStatus
+    from ada.services.entitlements import GROWTH, PILOT, resolve_employer
+
+    pilot = resolve_employer(None)
+    assert pilot.tier == PILOT
+    assert not pilot.role_limit_reached(0) and pilot.role_limit_reached(1)
+    assert not pilot.intro_limit_reached(0) and pilot.intro_limit_reached(1)
+
+    growth = resolve_employer(
+        Subscription(user_id="u", tier=GROWTH, status=SubscriptionStatus.ACTIVE)
+    )
+    assert growth.max_roles is None and not growth.role_limit_reached(9999)
+    assert growth.max_intros is None and not growth.intro_limit_reached(9999)
+
+    # An inactive subscription falls back to the free Pilot caps.
+    canceled = resolve_employer(
+        Subscription(user_id="u", tier=GROWTH, status=SubscriptionStatus.CANCELED)
+    )
+    assert canceled.tier == PILOT
+
+
+@_db
+async def test_candidate_responds_to_own_intro_once():
+    from sqlalchemy import delete
+
+    from ada.db.models import Intro, IntroStatus, Job, User
+    from ada.db.repositories import IntroRepository, JobRepository, UserRepository
+    from ada.db.session import _session_factory, init_db
+
+    await init_db()
+    emp, cand, other = (uuid.uuid4().hex for _ in range(3))
+    job_id = None
+    try:
+        async with _session_factory() as s:
+            for uid in (emp, cand, other):
+                s.add(User(id=uid, email=f"{uid}@ex.com"))
+            await s.commit()
+            await UserRepository(s).set_account(emp, account_type="employer", company="Acme")
+            job = await JobRepository(s).create_posting(
+                Job(source="employer", external_id=uuid.uuid4().hex, title="QA", company="Acme",
+                    location="Lagos", description="d", posted_by=emp)
+            )
+            job_id = job.id
+            repo = IntroRepository(s)
+            intro, _ = await repo.create(
+                intro_id=uuid.uuid4().hex, employer_id=emp, candidate_id=cand,
+                job_id=job_id, message="hi",
+            )
+            # a different candidate cannot respond
+            assert await repo.respond(intro.id, other, IntroStatus.ACCEPTED) is False
+            # the owning candidate accepts, once
+            assert await repo.respond(intro.id, cand, IntroStatus.ACCEPTED) is True
+            # already answered -> no-op
+            assert await repo.respond(intro.id, cand, IntroStatus.DECLINED) is False
+            # the candidate sees it with the employer + role attached
+            rows = await repo.list_for_candidate(cand)
+            assert len(rows) == 1
+            got_intro, got_job, got_emp = rows[0]
+            assert str(got_intro.status) == "accepted"
+            assert got_job.title == "QA" and got_emp.company == "Acme"
+    finally:
+        async with _session_factory() as s:
+            await s.execute(delete(Intro).where(Intro.employer_id == emp))
+            if job_id is not None:
+                await s.execute(delete(Job).where(Job.id == job_id))
+            await s.execute(delete(User).where(User.id.in_([emp, cand, other])))
+            await s.commit()

@@ -3,6 +3,7 @@
 import {
   CreditCard,
   FileText,
+  Inbox,
   LayoutDashboard,
   LayoutList,
   MessageCircle,
@@ -15,6 +16,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState } from "react";
 
+import { NotificationBell } from "@/components/notification-bell";
 import { Logo, Spinner, ThemeToggle } from "@/components/ui";
 import { api, type MeOut } from "@/lib/api";
 
@@ -41,6 +43,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { href: "/app/runs", label: "My runs", icon: LayoutList },
       { href: "/app/documents", label: "Documents", icon: FileText },
       { href: "/app/applications", label: "Applications", icon: Send },
+      { href: "/app/intros", label: "Intros", icon: Inbox },
     ],
   },
   {
@@ -167,6 +170,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <span className="block text-[10px] text-muted">View profile</span>
                 </span>
               </Link>
+              <NotificationBell />
               <ThemeToggle />
             </div>
           </div>
@@ -179,6 +183,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Logo />
           </Link>
           <div className="flex items-center gap-1.5">
+            <NotificationBell />
             <ThemeToggle />
             <Link
               href="/app/profile"

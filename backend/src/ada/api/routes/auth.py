@@ -5,7 +5,7 @@ any bad-credential case so it can't be used to probe which emails exist. request
 always returns 202 regardless of whether the email exists, so it can't enumerate
 accounts either. reset consumes its token atomically and revokes existing sessions.
 """
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +18,7 @@ from ada.config import get_settings
 from ada.db.models import User
 from ada.db.session import get_session
 from ada.observability import log
+from ada.services.notify import notify
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -65,7 +66,10 @@ async def _start_session(repo: AuthRepository, user_id: str, resp: Response) -> 
 
 @router.post("/signup", status_code=201)
 async def signup(
-    body: SignupIn, response: Response, session: AsyncSession = Depends(get_session)
+    body: SignupIn,
+    response: Response,
+    background: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
 ) -> dict[str, str]:
     repo = AuthRepository(session)
     user = await repo.create_user_with_password(body.email, hash_password(body.password))
@@ -74,6 +78,13 @@ async def signup(
         # and hiding this only pushes the same information to the login form.
         raise HTTPException(status_code=409, detail="An account with this email already exists.")
     await _start_session(repo, user.id, response)
+    background.add_task(
+        notify, user.id, kind="welcome",
+        title="Welcome to Ada",
+        body="I'm Ada — tell me the role you're after and I'll rewrite your CV, find your "
+             "best-fit jobs, and prep your interview. Start your first run when you're ready.",
+        link="/app/new", whatsapp=False,
+    )
     return {"email": user.email}
 
 

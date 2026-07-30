@@ -16,13 +16,24 @@ from ada.db.repositories import (
     IntroRepository,
     JobRepository,
     ProfileRepository,
+    SubscriptionRepository,
 )
 from ada.db.session import get_session
 from ada.observability import log
+from ada.payments import plans as plan_catalog
+from ada.services import entitlements
+from ada.services.notify import notify
 from ada.services.search import SearchService
 from ada.services.uche import UcheService
 
 router = APIRouter(prefix="/employer", tags=["employer"])
+
+
+async def _employer_entitlement(
+    session: AsyncSession, user_id: str
+) -> entitlements.EmployerEntitlement:
+    sub = await SubscriptionRepository(session).get(user_id)
+    return entitlements.resolve_employer(sub)
 
 
 class JobIn(BaseModel):
@@ -68,6 +79,14 @@ async def post_job(
     session: AsyncSession = Depends(get_session),
     employer: User = Depends(current_employer),
 ) -> JobOut:
+    jobs = JobRepository(session)
+    entitlement = await _employer_entitlement(session, employer.id)
+    if entitlement.role_limit_reached(len(await jobs.list_by_poster(employer.id))):
+        raise HTTPException(
+            402,
+            f"Your {entitlement.tier} plan covers {entitlement.max_roles} open role — "
+            "upgrade to Growth for unlimited roles.",
+        )
     job = Job(
         source="employer",
         external_id=uuid.uuid4().hex,
@@ -79,7 +98,7 @@ async def post_job(
         description=body.description,
         posted_by=employer.id,
     )
-    job = await JobRepository(session).create_posting(job)
+    job = await jobs.create_posting(job)
     background.add_task(_embed_job, job.id, f"{job.title} at {job.company}. {job.description}")
     return JobOut(
         id=job.id, title=job.title, company=job.company, location=job.location,
@@ -122,6 +141,7 @@ async def curated_candidates(
 @router.post("/intros", status_code=201)
 async def request_intro(
     body: IntroIn,
+    background: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     employer: User = Depends(current_employer),
 ) -> dict:
@@ -132,10 +152,27 @@ async def request_intro(
     candidate = await ProfileRepository(session).get(body.candidate_id)
     if candidate is None or not candidate.discoverable:
         raise HTTPException(404, "Candidate is not available.")
-    intro, created = await IntroRepository(session).create(
+    intros = IntroRepository(session)
+    entitlement = await _employer_entitlement(session, employer.id)
+    if entitlement.intro_limit_reached(len(await intros.list_for_employer(employer.id))):
+        raise HTTPException(
+            402,
+            f"Your {entitlement.tier} plan includes {entitlement.max_intros} intro — "
+            "upgrade to Growth for unlimited intros.",
+        )
+    intro, created = await intros.create(
         intro_id=uuid.uuid4().hex, employer_id=employer.id, candidate_id=body.candidate_id,
         job_id=body.job_id, message=body.message,
     )
+    if created:
+        company = employer.company or job.company
+        background.add_task(
+            notify, body.candidate_id, kind="intro_request",
+            title=f"{company} wants to connect",
+            body=f"{company} is hiring for {job.title} and would like to talk. "
+                 "Open your intros to accept or decline.",
+            link="/app/intros",
+        )
     return {"intro_id": intro.id, "status": str(intro.status), "already_requested": not created}
 
 
@@ -149,6 +186,16 @@ async def my_intros(
     out = []
     for intro in intros:
         candidate = await profiles.get(intro.candidate_id)
+        accepted = str(intro.status) == "accepted"
+        # Contact is shared only once the candidate accepts — the handoff that turns
+        # an intro into a real conversation, gated by the candidate's own consent.
+        contact = None
+        if accepted:
+            user = await session.get(User, intro.candidate_id)
+            contact = {
+                "email": user.email if user else None,
+                "phone": candidate.phone if candidate else None,
+            }
         out.append({
             "id": intro.id,
             "job_id": intro.job_id,
@@ -158,5 +205,41 @@ async def my_intros(
             "status": str(intro.status),
             "message": intro.message,
             "created_at": intro.created_at.isoformat(),
+            "contact": contact,
         })
     return out
+
+
+@router.get("/plans")
+async def employer_plans() -> list[dict]:
+    """The billable employer tiers (Growth, Scale) for the /hire billing page."""
+    return [
+        {
+            "tier": p.tier,
+            "name": p.name,
+            "tagline": p.tagline,
+            "features": list(p.features),
+            "monthly": {"ngn_kobo": p.monthly.ngn_kobo, "usd_cents": p.monthly.usd_cents},
+            "annual": {"ngn_kobo": p.annual.ngn_kobo, "usd_cents": p.annual.usd_cents},
+        }
+        for p in plan_catalog.EMPLOYER_CATALOG.values()
+    ]
+
+
+@router.get("/plan")
+async def my_plan(
+    session: AsyncSession = Depends(get_session),
+    employer: User = Depends(current_employer),
+) -> dict:
+    """Current plan + usage, so the console can show '1 / 1 roles' and gate the UI."""
+    ent = await _employer_entitlement(session, employer.id)
+    roles_used = len(await JobRepository(session).list_by_poster(employer.id))
+    intros_used = len(await IntroRepository(session).list_for_employer(employer.id))
+    return {
+        "tier": ent.tier,
+        "max_roles": ent.max_roles,
+        "max_intros": ent.max_intros,
+        "placement_support": ent.placement_support,
+        "roles_used": roles_used,
+        "intros_used": intros_used,
+    }

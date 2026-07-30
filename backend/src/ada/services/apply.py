@@ -140,17 +140,34 @@ async def run_submission(application_id: str) -> None:
         outcome = None
     async with _session_factory() as session:
         applications = ApplicationRepository(session)
+        application = await applications.get(application_id)
+        job = await JobRepository(session).get(application.job_id) if application else None
+        role = job.title if job else "the role"
         if outcome is None:
             await applications.set_status(
                 application_id, ApplicationStatus.FAILED,
                 detail="Something broke on our side — we'll look into it. Nothing was submitted.",
             )
+            _note = ("run_failed", "Application couldn't be sent",
+                     f"We hit a snag applying to {role} — nothing was submitted. Try again.")
         elif outcome.status == "submitted":
             await applications.set_status(application_id, ApplicationStatus.SUBMITTED)
             log.info("apply_submitted", application_id=application_id)
+            _note = ("application_submitted", "Application submitted",
+                     f"Ada submitted your application to {role}.")
         else:
             await applications.set_status(
                 application_id, ApplicationStatus.NEEDS_ATTENTION, detail=outcome.detail
+            )
+            _note = ("application_attention", "An application needs you",
+                     f"Your application to {role} needs a step only you can do: "
+                     f"{outcome.detail}")
+        if application is not None:
+            from ada.services.notify import notify
+
+            await notify(
+                application.user_id, kind=_note[0], title=_note[1], body=_note[2],
+                link="/app/applications",
             )
 
 

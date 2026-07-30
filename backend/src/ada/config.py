@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     apply_max_in_flight_per_user: int = 5
     apply_stuck_seconds: int = 300
 
+    # proactive digest (Ada's "fresh leads" outreach, scheduled)
+    digest_matches: int = 4
+    digest_cooldown_seconds: int = 6 * 24 * 3600  # ~weekly; re-runs inside this are no-ops
+
     # matching + interview
     jobs_match_k: int = 5
     interview_questions: int = 5
@@ -62,6 +66,12 @@ class Settings(BaseSettings):
     resend_api_key: str = Field(default="", repr=False)
     email_from: str = "Ada <auth@ada.local>"
     session_cookie: str = "ada_session"
+
+    # WhatsApp notifications via Twilio (best-effort; unset = channel skipped, logged).
+    twilio_account_sid: str = Field(default="", repr=False)
+    twilio_auth_token: str = Field(default="", repr=False)
+    twilio_whatsapp_from: str = ""  # e.g. "whatsapp:+14155238886" (Twilio sandbox)
+    frontend_base_url: str = "http://localhost:3000"  # for links inside notifications
 
     # paystack (NGN)
     paystack_base_url: str = "https://api.paystack.co"

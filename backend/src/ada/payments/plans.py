@@ -7,7 +7,7 @@ governed by the provider Plan/Price whose code is resolved from settings per
 from dataclasses import dataclass
 
 from ada.config import get_settings
-from ada.services.entitlements import PREMIUM, PRO
+from ada.services.entitlements import GROWTH, PREMIUM, PRO, SCALE
 
 CADENCES = ("monthly", "annual")
 
@@ -54,6 +54,40 @@ CATALOG: dict[str, Plan] = {
         annual=Price(ngn_kobo=12_000_000, usd_cents=39_000),
     ),
 }
+
+
+# Employer (Uche) plans — the paid side of hiring. Pilot is free (not billable).
+EMPLOYER_CATALOG: dict[str, Plan] = {
+    GROWTH: Plan(
+        tier=GROWTH,
+        name="Growth",
+        tagline="Hire on repeat, without the admin.",
+        features=(
+            "Unlimited roles & full shortlists",
+            "Unlimited candidate intros",
+            "Interview questions drafted per candidate",
+            "Weekly best-fit candidate digest",
+        ),
+        monthly=Price(ngn_kobo=7_500_000, usd_cents=14_900),
+        annual=Price(ngn_kobo=75_000_000, usd_cents=149_000),
+    ),
+    SCALE: Plan(
+        tier=SCALE,
+        name="Scale",
+        tagline="For teams hiring across roles.",
+        features=(
+            "Everything in Growth",
+            "Priority curation & multiple seats",
+            "Placement support on key hires",
+            "Dedicated success manager",
+        ),
+        monthly=Price(ngn_kobo=20_000_000, usd_cents=39_900),
+        annual=Price(ngn_kobo=200_000_000, usd_cents=399_000),
+    ),
+}
+
+# Every billable plan, candidate + employer, keyed by tier — checkout validates here.
+ALL_PLANS: dict[str, Plan] = {**CATALOG, **EMPLOYER_CATALOG}
 
 
 def provider_code(provider: str, tier: str, cadence: str) -> str | None:

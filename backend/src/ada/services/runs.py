@@ -44,6 +44,16 @@ async def execute_run(run_id: str) -> None:
                 questions=final["questions"],
             )
             emit_run_log(run_id=run_id, step="run", status="ok")
+            if run.user_id:
+                from ada.services.notify import notify
+
+                await notify(
+                    run.user_id, kind="run_complete",
+                    title="Your run is ready",
+                    body=f"Ada finished your run for {run.target_role} — CV, matches, "
+                         "and interview questions are in.",
+                    link=f"/app/runs/{run_id}",
+                )
         except Exception as exc:  # noqa: BLE001
             await runs.set_status(run, RunStatus.FAILED)
             emit_run_log(run_id=run_id, step="run", status="error", error=repr(exc))

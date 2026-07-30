@@ -1,5 +1,5 @@
 """Ada's structured read of a candidate — the analysis that makes a profile
-elaborate for the candidate and searchable for Grace.
+elaborate for the candidate and searchable for Uche.
 
 From the candidate's profile text + latest rewritten CV, produce a typed insight
 (seniority, years, skills, strengths, market fit, readiness) and the candidate

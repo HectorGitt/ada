@@ -19,12 +19,21 @@ export interface PlanPrice {
 }
 
 export interface Plan {
-  tier: "pro" | "premium";
+  tier: string; // "pro" | "premium" (candidate) or "growth" | "scale" (employer)
   name: string;
   tagline: string;
   features: string[];
   monthly: PlanPrice;
   annual: PlanPrice;
+}
+
+export interface EmployerPlan {
+  tier: "pilot" | "growth" | "scale";
+  max_roles: number | null;
+  max_intros: number | null;
+  placement_support: boolean;
+  roles_used: number;
+  intros_used: number;
 }
 
 export interface SubscriptionState {
@@ -161,6 +170,33 @@ export interface EmployerIntro {
   status: string;
   message: string | null;
   created_at: string;
+  contact: { email: string | null; phone: string | null } | null;
+}
+
+export interface CandidateIntro {
+  id: string;
+  status: "requested" | "accepted" | "declined";
+  message: string | null;
+  created_at: string;
+  role_title: string;
+  company: string;
+  location: string;
+  remote: boolean;
+}
+
+export interface AppNotification {
+  id: string;
+  kind: string;
+  title: string;
+  body: string | null;
+  link: string | null;
+  read: boolean;
+  created_at: string;
+}
+
+export interface NotificationsOut {
+  unread: number;
+  items: AppNotification[];
 }
 
 export interface Memory {
@@ -278,6 +314,14 @@ export const api = {
       body: JSON.stringify({ discoverable }),
     }),
 
+  // intros an employer sent the candidate — the candidate side of the loop
+  candidateIntros: () => request<CandidateIntro[]>("/api/candidate/intros"),
+  respondIntro: (introId: string, action: "accept" | "decline") =>
+    request<{ status: string }>(`/api/candidate/intros/${introId}/respond`, {
+      method: "POST",
+      body: JSON.stringify({ action }),
+    }),
+
   // employer (Uche)
   postJob: (body: {
     title: string;
@@ -296,6 +340,16 @@ export const api = {
       { method: "POST", body: JSON.stringify({ job_id, candidate_id, message }) },
     ),
   employerIntros: () => request<EmployerIntro[]>("/api/employer/intros"),
+  employerPlans: () => request<Plan[]>("/api/employer/plans"),
+  employerPlan: () => request<EmployerPlan>("/api/employer/plan"),
+
+  // notifications (in-app centre; email + WhatsApp fan out server-side)
+  notifications: () => request<NotificationsOut>("/api/notifications"),
+  markNotificationsRead: (id?: string) =>
+    request<{ ok: boolean }>("/api/notifications/read", {
+      method: "POST",
+      body: JSON.stringify({ id: id ?? null }),
+    }),
 
   // runs
   createRun: (body: {

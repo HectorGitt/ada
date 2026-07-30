@@ -81,7 +81,7 @@ async def my_subscription(
 async def start_subscription(
     body: CheckoutIn, user: User = Depends(current_user)
 ) -> dict[str, str]:
-    if body.tier not in plan_catalog.CATALOG or body.cadence not in plan_catalog.CADENCES:
+    if body.tier not in plan_catalog.ALL_PLANS or body.cadence not in plan_catalog.CADENCES:
         raise HTTPException(422, "Unknown plan or billing cycle.")
     if body.provider not in ("paystack", "stripe"):
         raise HTTPException(422, "Unknown payment provider.")

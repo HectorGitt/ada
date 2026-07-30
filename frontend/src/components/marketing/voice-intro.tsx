@@ -16,18 +16,24 @@ function fmt(seconds: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export function AdaVoiceIntro() {
+/** Custom voice-intro player shared by both agents — a pill that expands into a
+ *  scrubbable waveform. `src` is the audio asset, `name` the agent (Ada / Uche). */
+function VoiceIntro({ src, name, fallbackDuration = 24 }: {
+  src: string;
+  name: string;
+  fallbackDuration?: number;
+}) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [open, setOpen] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [current, setCurrent] = useState(0);
-  const [duration, setDuration] = useState(24);
+  const [duration, setDuration] = useState(fallbackDuration);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
     const onTime = () => setCurrent(audio.currentTime);
-    const onMeta = () => setDuration(audio.duration || 24);
+    const onMeta = () => setDuration(audio.duration || fallbackDuration);
     const onEnd = () => setPlaying(false);
     audio.addEventListener("timeupdate", onTime);
     audio.addEventListener("loadedmetadata", onMeta);
@@ -75,7 +81,7 @@ export function AdaVoiceIntro() {
 
   return (
     <div className="w-full max-w-md">
-      <audio ref={audioRef} src="/ada-intro.mp3" preload="metadata" />
+      <audio ref={audioRef} src={src} preload="metadata" />
 
       <AnimatePresence initial={false} mode="wait">
         {!open ? (
@@ -101,7 +107,7 @@ export function AdaVoiceIntro() {
                 />
               ))}
             </span>
-            <span className="text-sm font-medium text-ink">Hear from Ada</span>
+            <span className="text-sm font-medium text-ink">Hear from {name}</span>
             <span className="text-xs tabular-nums text-muted">{fmt(duration)}</span>
           </motion.button>
         ) : (
@@ -117,7 +123,7 @@ export function AdaVoiceIntro() {
               <button
                 type="button"
                 onClick={toggle}
-                aria-label={playing ? "Pause Ada's introduction" : "Play Ada's introduction"}
+                aria-label={playing ? `Pause ${name}'s introduction` : `Play ${name}'s introduction`}
                 className="flex size-11 shrink-0 items-center justify-center rounded-full bg-accent text-accent-ink shadow-btn transition-transform hover:scale-105 active:scale-95"
               >
                 {playing ? (
@@ -130,7 +136,7 @@ export function AdaVoiceIntro() {
               <div
                 role="slider"
                 tabIndex={0}
-                aria-label="Seek Ada's introduction"
+                aria-label={`Seek ${name}'s introduction`}
                 aria-valuemin={0}
                 aria-valuemax={Math.round(duration)}
                 aria-valuenow={Math.round(current)}
@@ -166,4 +172,12 @@ export function AdaVoiceIntro() {
       </AnimatePresence>
     </div>
   );
+}
+
+export function AdaVoiceIntro() {
+  return <VoiceIntro src="/ada-intro.mp3" name="Ada" fallbackDuration={24} />;
+}
+
+export function UcheVoiceIntro() {
+  return <VoiceIntro src="/uche-intro.mp3" name="Uche" fallbackDuration={19} />;
 }

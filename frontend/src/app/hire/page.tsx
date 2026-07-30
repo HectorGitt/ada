@@ -1,150 +1,38 @@
 "use client";
 
-import {
-  ArrowRight,
-  Briefcase,
-  Check,
-  Loader2,
-  Plus,
-  Sparkles,
-  UserRound,
-} from "lucide-react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Check, Loader2, Plus, Sparkles, UserRound } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { EmployerShell } from "@/components/hire/shell";
 import {
   Button,
   Card,
   EmptyState,
   Input,
   Label,
-  Logo,
+  PageHeader,
   ScoreRing,
   Skeleton,
   StatusBadge,
   Textarea,
-  ThemeToggle,
 } from "@/components/ui";
 import {
   ApiError,
   api,
   type CandidateCard,
   type EmployerJob,
-  type MeOut,
   type Shortlist,
 } from "@/lib/api";
 
-type Gate = "loading" | "anon" | "candidate" | "employer";
-
 export default function HirePage() {
-  const router = useRouter();
-  const [gate, setGate] = useState<Gate>("loading");
-  const [me, setMe] = useState<MeOut | null>(null);
-
-  useEffect(() => {
-    api
-      .me()
-      .then((m) => {
-        setMe(m);
-        setGate(m.account_type === "employer" ? "employer" : "candidate");
-      })
-      .catch(() => setGate("anon"));
-  }, []);
-
-  useEffect(() => {
-    if (gate === "anon") router.replace("/login?next=/hire");
-  }, [gate, router]);
-
   return (
-    <div className="min-h-dvh bg-bg">
-      <header className="sticky top-0 z-20 border-b border-line bg-surface/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
-          <Link href="/" className="flex items-center gap-2.5">
-            <Logo />
-            <span className="hidden rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent sm:inline">
-              for employers
-            </span>
-          </Link>
-          <div className="flex items-center gap-3">
-            <ThemeToggle />
-            {me && <span className="hidden text-sm text-muted sm:inline">{me.company ?? me.email}</span>}
-            <Link href="/app" className="text-sm text-muted transition-colors hover:text-ink">
-              Candidate view
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-6xl px-5 py-10">
-        {gate === "loading" && <Skeleton className="h-64 w-full" />}
-        {gate === "candidate" && me && <BecomeEmployer email={me.email} onDone={setMe} />}
-        {gate === "employer" && <Console />}
-      </main>
-    </div>
+    <EmployerShell>
+      <RolesConsole />
+    </EmployerShell>
   );
 }
 
-function BecomeEmployer({ email, onDone }: { email: string; onDone: (m: MeOut) => void }) {
-  const [company, setCompany] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      const m = await api.setAccount("employer", company.trim());
-      onDone(m);
-      location.reload();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Couldn't switch to hiring mode.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="mx-auto max-w-lg pt-10">
-      <div className="mb-8 text-center">
-        <span className="mb-4 inline-flex size-14 items-center justify-center rounded-2xl bg-ink text-bg">
-          <Briefcase className="size-6" />
-        </span>
-        <h1 className="display text-4xl">Hire with Uche.</h1>
-        <p className="mx-auto mt-3 max-w-sm text-muted">
-          Uche reads your role and brings you a shortlist of vetted candidates — each
-          already assessed by Ada, each with a reason they fit. No job boards, no noise.
-        </p>
-      </div>
-      <Card className="p-7">
-        <form onSubmit={submit} className="space-y-4">
-          <div>
-            <Label htmlFor="company">Company name</Label>
-            <Input
-              id="company"
-              required
-              autoFocus
-              placeholder="Acme Foods"
-              value={company}
-              onChange={(e) => setCompany(e.target.value)}
-            />
-          </div>
-          <p className="text-xs text-muted">
-            Signed in as {email}. Switching to hiring mode keeps your candidate data intact.
-          </p>
-          {error && <p className="text-sm text-danger">{error}</p>}
-          <Button type="submit" loading={busy} className="w-full !py-3">
-            Enter hiring mode
-            <ArrowRight className="size-4" />
-          </Button>
-        </form>
-      </Card>
-    </div>
-  );
-}
-
-function Console() {
+function RolesConsole() {
   const [jobs, setJobs] = useState<EmployerJob[] | null>(null);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [posting, setPosting] = useState(false);
@@ -160,16 +48,16 @@ function Console() {
   }, [load]);
 
   return (
-    <div>
-      <div className="mb-8 flex items-end justify-between gap-4">
-        <div>
-          <p className="eyebrow mb-2">Hiring console</p>
-          <h1 className="display text-4xl">Your open roles.</h1>
-        </div>
-        <Button onClick={() => setPosting(true)} className="shrink-0">
-          <Plus className="size-4" /> Post a role
-        </Button>
-      </div>
+    <>
+      <PageHeader
+        title="Your roles."
+        subtitle="Post a role and Uche builds a vetted shortlist — ranked, with the reason each candidate fits."
+        action={
+          <Button onClick={() => setPosting(true)}>
+            <Plus className="size-4" /> Post a role
+          </Button>
+        }
+      />
 
       {posting && (
         <PostRole
@@ -186,13 +74,13 @@ function Console() {
         <Skeleton className="h-40 w-full" />
       ) : jobs.length === 0 && !posting ? (
         <EmptyState
-          icon={<Briefcase className="size-5" />}
+          icon={<UserRound className="size-5" />}
           title="No roles yet"
           body="Post your first role and Uche builds a vetted shortlist in seconds."
           action={<Button onClick={() => setPosting(true)}>Post a role</Button>}
         />
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[0.9fr_1.6fr]">
+        <div className="grid gap-6 lg:grid-cols-[0.85fr_1.6fr]">
           <div className="space-y-2.5">
             {jobs.map((job) => (
               <button
@@ -214,7 +102,7 @@ function Console() {
           <div>{activeId !== null && <ShortlistPanel jobId={activeId} />}</div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -289,7 +177,7 @@ function PostRole({
         {error && <p className="text-sm text-danger">{error}</p>}
         <div className="flex gap-2.5">
           <Button type="submit" loading={busy}>
-            Post & find candidates
+            Post &amp; find candidates
           </Button>
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel

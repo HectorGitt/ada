@@ -88,7 +88,7 @@ class Job(Base):
     url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     description: Mapped[str] = mapped_column(Text)
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Set when an employer posts the role via Grace; NULL for ingested listings. Employer
+    # Set when an employer posts the role via Uche; NULL for ingested listings. Employer
     # postings share the pool, so they surface in candidate matching too.
     posted_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBED_DIM), nullable=True)
@@ -99,7 +99,7 @@ class User(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
     password_hash: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    # "candidate" (default) uses Ada; "employer" uses Grace to hire.
+    # "candidate" (default) uses Ada; "employer" uses Uche to hire.
     account_type: Mapped[str] = mapped_column(String(16), default="candidate")
     company: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -129,7 +129,7 @@ class Session(Base):
 class Profile(Base):
     """Career profile imported by the user (LinkedIn export/paste). Grounds chat and runs.
 
-    For discoverable candidates it doubles as the search record Grace ranks: `embedding`
+    For discoverable candidates it doubles as the search record Uche ranks: `embedding`
     is the candidate vector and `insights` is Ada's structured analysis of them.
     """
     __tablename__ = "profiles"
@@ -259,4 +259,19 @@ class Intro(Base):
         String(16), default=IntroStatus.REQUESTED, index=True
     )
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Notification(Base):
+    """One in-app notification. Email/WhatsApp are best-effort side channels; this row
+    is the durable record every user sees in their notification centre."""
+    __tablename__ = "notifications"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    # e.g. intro_request, intro_accepted, intro_declined, run_complete
+    kind: Mapped[str] = mapped_column(String(32))
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    link: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    read: Mapped[bool] = mapped_column(default=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

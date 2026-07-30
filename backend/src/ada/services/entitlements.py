@@ -51,3 +51,40 @@ def resolve(subscription: Subscription | None) -> Entitlement:
     if subscription is None or subscription.status not in _ACTIVE_STATUSES:
         return _MATRIX[FREE]
     return for_tier(subscription.tier)
+
+
+# ── Employer (Uche) tiers ────────────────────────────────────────────────────
+# The employer side of the same subscription machinery. Caps are enforced at
+# post-role and request-intro; None means unlimited.
+PILOT = "pilot"
+GROWTH = "growth"
+SCALE = "scale"
+EMPLOYER_TIERS = (PILOT, GROWTH, SCALE)
+
+
+@dataclass(frozen=True)
+class EmployerEntitlement:
+    tier: str
+    max_roles: int | None      # None = unlimited
+    max_intros: int | None
+    placement_support: bool
+
+    def role_limit_reached(self, current: int) -> bool:
+        return self.max_roles is not None and current >= self.max_roles
+
+    def intro_limit_reached(self, current: int) -> bool:
+        return self.max_intros is not None and current >= self.max_intros
+
+
+_EMPLOYER_MATRIX: dict[str, EmployerEntitlement] = {
+    PILOT: EmployerEntitlement(PILOT, max_roles=1, max_intros=1, placement_support=False),
+    GROWTH: EmployerEntitlement(GROWTH, max_roles=None, max_intros=None, placement_support=False),
+    SCALE: EmployerEntitlement(SCALE, max_roles=None, max_intros=None, placement_support=True),
+}
+
+
+def resolve_employer(subscription: Subscription | None) -> EmployerEntitlement:
+    """Effective employer entitlement, defaulting to the free Pilot tier."""
+    if subscription is None or subscription.status not in _ACTIVE_STATUSES:
+        return _EMPLOYER_MATRIX[PILOT]
+    return _EMPLOYER_MATRIX.get(subscription.tier, _EMPLOYER_MATRIX[PILOT])
