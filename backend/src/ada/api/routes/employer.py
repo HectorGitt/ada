@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ada.auth.dependencies import current_employer
 from ada.db.models import Job, User
 from ada.db.repositories import (
+    AssessmentRepository,
     IntroRepository,
     JobRepository,
     ProfileRepository,
@@ -131,7 +132,10 @@ async def curated_candidates(
     job = await jobs.get(job_id)
     if job is None or job.posted_by != employer.id:
         raise HTTPException(404, "Job not found.")
-    result = await UcheService().curate(job=job, profiles=ProfileRepository(session))
+    result = await UcheService().curate(
+        job=job, profiles=ProfileRepository(session),
+        assessments=AssessmentRepository(session),
+    )
     already = await IntroRepository(session).requested_candidate_ids(employer.id, job_id)
     for card in result["candidates"]:
         card["intro_requested"] = card["user_id"] in already

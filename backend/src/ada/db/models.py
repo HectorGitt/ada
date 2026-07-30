@@ -141,6 +141,10 @@ class Profile(Base):
     # Captured at onboarding; shown to employers on the shortlist and respected in matching.
     compensation: Mapped[str | None] = mapped_column(String(120), nullable=True)
     work_pref: Mapped[str | None] = mapped_column(String(20), nullable=True)  # remote|hybrid|onsite
+    # Identity attestation — half of the verification credential (the other half is a
+    # proctored Assessment). method records how it was confirmed (attested|kyc provider).
+    identity_verified: Mapped[bool] = mapped_column(default=False)
+    identity_method: Mapped[str | None] = mapped_column(String(40), nullable=True)
     # Employer-discovery opt-in (the channel-conflict wall) + the search vector/analysis.
     discoverable: Mapped[bool] = mapped_column(default=False, index=True)
     headline: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -278,3 +282,40 @@ class Notification(Base):
     link: Mapped[str | None] = mapped_column(String(512), nullable=True)
     read: Mapped[bool] = mapped_column(default=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AssessmentStatus(StrEnum):
+    PENDING = "pending"      # task issued, not yet submitted
+    SUBMITTED = "submitted"  # answers in, awaiting scoring
+    SCORED = "scored"        # graded — the credential is live
+
+
+class AssessmentVerdict(StrEnum):
+    VERIFIED = "verified"          # clean proctoring, credible score
+    NEEDS_REVIEW = "needs_review"  # integrity flags — score shown but not trusted
+    FAILED = "failed"              # below the bar
+
+
+class Assessment(Base):
+    """A proctored, role-specific skills assessment — the evidence half of the
+    verification credential. Questions are issued server-side; answers arrive with
+    integrity telemetry (tab-switches, blur, paste, duration) so the score means
+    something to a skeptical employer. Scored independently of Ada's opinion."""
+    __tablename__ = "assessments"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    skill: Mapped[str] = mapped_column(String(160))  # the role/skill assessed
+    questions: Mapped[list[Any]] = mapped_column(JSONB)
+    answers: Mapped[list[Any] | None] = mapped_column(JSONB, nullable=True)
+    status: Mapped[AssessmentStatus] = mapped_column(
+        String(16), default=AssessmentStatus.PENDING, index=True
+    )
+    verdict: Mapped[AssessmentVerdict | None] = mapped_column(String(16), nullable=True)
+    score: Mapped[int | None] = mapped_column(Integer, nullable=True)      # 0..100
+    integrity: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    evidence: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)  # per-answer
+    duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

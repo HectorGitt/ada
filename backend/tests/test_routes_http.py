@@ -34,6 +34,7 @@ async def _cleanup(user_id: str) -> None:
 
     async with _session_factory() as s:
         await s.execute(text("DELETE FROM notifications WHERE user_id = :u"), {"u": user_id})
+        await s.execute(text("DELETE FROM assessments WHERE user_id = :u"), {"u": user_id})
         await s.execute(text("DELETE FROM intros WHERE employer_id = :u"), {"u": user_id})
         await s.execute(delete(Job).where(Job.posted_by == user_id))
         await s.execute(delete(Session).where(Session.user_id == user_id))
@@ -114,6 +115,56 @@ async def test_candidate_intro_respond_validation():
         # bad action is a 422
         r = await c.post("/api/candidate/intros/nope/respond", json={"action": "maybe"})
         assert r.status_code == 422
+
+        from sqlalchemy import select
+
+        from ada.db.models import User
+        from ada.db.session import _session_factory
+
+        async with _session_factory() as s:
+            user_id = (await s.execute(select(User.id).where(User.email == email))).scalar_one()
+    await _cleanup(user_id)
+
+
+@_db
+async def test_verification_flow_antifarm_and_gating():
+    user_id = ""
+    async with _client() as c:
+        email = f"{uuid.uuid4().hex}@example.com"
+        await c.post("/api/auth/signup", json={"email": email, "password": "password123"})
+
+        started = await c.post("/api/assessment/start", json={"skill": "Python"})
+        assert started.status_code == 200
+        task = started.json()
+        assert len(task["questions"]) >= 1 and task["time_limit_seconds"] > 0
+
+        # anti-farm: start again resumes the SAME pending task (no fresh questions)
+        again = await c.post("/api/assessment/start", json={"skill": "Python"})
+        assert again.json()["assessment_id"] == task["assessment_id"]
+
+        # answer-count mismatch is rejected
+        bad = await c.post("/api/assessment/submit", json={
+            "assessment_id": task["assessment_id"], "answers": ["only one"],
+        })
+        assert bad.status_code == 422
+
+        answers = [f"A specific, detailed answer {i} with real substance and metrics."
+                   for i in range(len(task["questions"]))]
+        ok = await c.post("/api/assessment/submit", json={
+            "assessment_id": task["assessment_id"], "answers": answers,
+            "integrity": {"tab_switches": 0, "blur_seconds": 0, "paste_events": 0},
+        })
+        assert ok.status_code == 200
+        assert ok.json()["verdict"] in ("verified", "failed", "needs_review")
+
+        cred = (await c.get("/api/assessment")).json()
+        assert cred["assessment"]["skill"] == "Python"
+
+        # identity attestation needs a name first (428), then succeeds
+        assert (await c.post("/api/candidate/identity/attest")).status_code == 428
+        await c.put("/api/profile/identity", json={"full_name": "Jane Doe", "phone": None})
+        done = await c.post("/api/candidate/identity/attest")
+        assert done.status_code == 200 and done.json()["identity_verified"] is True
 
         from sqlalchemy import select
 

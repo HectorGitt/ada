@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Loader2, Plus, Sparkles, UserRound } from "lucide-react";
+import { BadgeCheck, Check, Loader2, Plus, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { EmployerShell } from "@/components/hire/shell";
@@ -281,6 +281,16 @@ function CandidateRow({ jobId, c }: { jobId: number; c: CandidateCard }) {
           <div className="flex flex-wrap items-center gap-2">
             <p className="font-medium">{c.headline ?? "Candidate"}</p>
             <StatusBadge tone={verdict.tone}>{verdict.label}</StatusBadge>
+            {c.verified?.assessment?.verdict === "verified" && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-[11px] font-medium text-success">
+                <BadgeCheck className="size-3" /> Verified {c.verified.assessment.score}
+              </span>
+            )}
+            {c.verified?.identity_verified && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-muted">
+                <ShieldCheck className="size-3" /> ID
+              </span>
+            )}
           </div>
           <p className="mt-0.5 text-xs text-muted">
             {[

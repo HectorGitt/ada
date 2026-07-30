@@ -158,6 +158,7 @@ export interface CandidateCard {
   top_skills: string[];
   compensation: string | null;
   work_pref: string | null;
+  verified: Credential | null;
   match: number;
   verdict: string;
   rationale: string;
@@ -190,6 +191,41 @@ export interface CandidateIntro {
   company: string;
   location: string;
   remote: boolean;
+}
+
+export interface CredentialAssessment {
+  skill: string;
+  score: number | null;
+  verdict: "verified" | "needs_review" | "failed" | null;
+  method?: string | null;
+  summary?: string | null;
+  taken_at?: string | null;
+}
+
+export interface Credential {
+  identity_verified: boolean;
+  identity_method?: string | null;
+  assessment: CredentialAssessment | null;
+}
+
+export interface AssessmentTask {
+  assessment_id: string;
+  skill: string;
+  questions: string[];
+  time_limit_seconds: number;
+  seconds_remaining: number;
+}
+
+export interface AssessmentResult {
+  score: number;
+  verdict: "verified" | "needs_review" | "failed";
+  summary: string | null;
+}
+
+export interface AssessmentIntegrity {
+  tab_switches: number;
+  blur_seconds: number;
+  paste_events: number;
 }
 
 export interface AppNotification {
@@ -321,6 +357,28 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ discoverable }),
     }),
+
+  // verification credential (proctored assessment + identity attestation)
+  myCredential: () => request<Credential>("/api/assessment"),
+  startAssessment: (skill: string) =>
+    request<AssessmentTask>("/api/assessment/start", {
+      method: "POST",
+      body: JSON.stringify({ skill }),
+    }),
+  submitAssessment: (
+    assessment_id: string,
+    answers: string[],
+    integrity: AssessmentIntegrity,
+  ) =>
+    request<AssessmentResult>("/api/assessment/submit", {
+      method: "POST",
+      body: JSON.stringify({ assessment_id, answers, integrity }),
+    }),
+  attestIdentity: () =>
+    request<{ identity_verified: boolean; method: string }>(
+      "/api/candidate/identity/attest",
+      { method: "POST" },
+    ),
 
   // intros an employer sent the candidate — the candidate side of the loop
   candidateIntros: () => request<CandidateIntro[]>("/api/candidate/intros"),

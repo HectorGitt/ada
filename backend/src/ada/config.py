@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     digest_matches: int = 4
     digest_cooldown_seconds: int = 6 * 24 * 3600  # ~weekly; re-runs inside this are no-ops
 
+    # verification credential — proctored assessment
+    verify_pass_mark: int = 60
+    verify_time_limit_seconds: int = 1800        # server-authoritative; over = can't certify
+    verify_max_attempts: int = 3                 # per skill within the window below
+    verify_attempt_window_seconds: int = 86_400  # rolling 24h attempt cap
+    verify_retake_cooldown_seconds: int = 1800   # min gap between finished attempts
+
     # matching + interview
     jobs_match_k: int = 5
     interview_questions: int = 5

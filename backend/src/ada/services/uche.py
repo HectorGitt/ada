@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from ada.config import get_settings
 from ada.db.models import Job, Profile
-from ada.db.repositories import ProfileRepository
+from ada.db.repositories import AssessmentRepository, ProfileRepository
 from ada.observability import log
 from ada.resilience import retry_async
 from ada.services.search import SearchService
@@ -34,6 +34,29 @@ class _Verdict(BaseModel):
 class _Shortlist(BaseModel):
     summary: str
     candidates: list[_Verdict] = Field(default_factory=list)
+
+
+async def _credential_of(
+    profile: Profile, assessments: "AssessmentRepository | None"
+) -> dict[str, Any]:
+    """The evidence an employer can trust independent of Ada: identity level +
+    the latest scored proctored assessment (only VERIFIED/NEEDS_REVIEW are shown)."""
+    cred: dict[str, Any] = {
+        "identity_verified": bool(profile.identity_verified),
+        "identity_method": profile.identity_method,
+        "assessment": None,
+    }
+    if assessments is None:
+        return cred
+    a = await assessments.latest_scored(profile.user_id)
+    if a is not None:
+        cred["assessment"] = {
+            "skill": a.skill,
+            "score": a.score,
+            "verdict": str(a.verdict) if a.verdict else None,
+            "method": (a.evidence or {}).get("method"),
+        }
+    return cred
 
 
 def _fit(distance: float) -> int:
@@ -58,9 +81,10 @@ class UcheService:
         self._search = SearchService()
 
     async def curate(
-        self, *, job: Job, profiles: ProfileRepository, k: int = 8
+        self, *, job: Job, profiles: ProfileRepository, k: int = 8,
+        assessments: "AssessmentRepository | None" = None,
     ) -> dict[str, Any]:
-        """Return {summary, candidates:[{user_id, match, verdict, rationale, ...}]}."""
+        """Return {summary, candidates:[{user_id, match, verdict, rationale, verified, ...}]}."""
         query = f"{job.title} at {job.company}. {job.description}"
         try:
             vector = await self._search.embed(query)
@@ -83,6 +107,8 @@ class UcheService:
                 # User-set fields win; fall back to what Ada read from their story.
                 "compensation": p.compensation or (p.insights or {}).get("compensation") or None,
                 "work_pref": p.work_pref or (p.insights or {}).get("work_pref") or None,
+                # The verification credential — evidence, not Ada's opinion.
+                "verified": await _credential_of(p, assessments),
                 "match": _fit(dist),
                 "verdict": "good",
                 "rationale": "",

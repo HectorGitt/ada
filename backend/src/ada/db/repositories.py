@@ -17,6 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ada.db.models import (
     Application,
     ApplicationStatus,
+    Assessment,
+    AssessmentStatus,
+    AssessmentVerdict,
     ChatTurn,
     Intro,
     IntroStatus,
@@ -221,6 +224,14 @@ class ProfileRepository:
     async def set_discoverable(self, user_id: str, discoverable: bool) -> None:
         await self._s.execute(
             update(Profile).where(Profile.user_id == user_id).values(discoverable=discoverable)
+        )
+        await self._s.commit()
+
+    async def set_identity_verified(self, user_id: str, *, method: str) -> None:
+        await self._s.execute(
+            update(Profile)
+            .where(Profile.user_id == user_id)
+            .values(identity_verified=True, identity_method=method)
         )
         await self._s.commit()
 
@@ -806,4 +817,94 @@ class NotificationRepository:
         if notification_id is not None:
             stmt = stmt.where(Notification.id == notification_id)
         await self._s.execute(stmt.values(read=True))
+        await self._s.commit()
+
+
+class AssessmentRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def create(self, assessment: Assessment) -> Assessment:
+        self._s.add(assessment)
+        await self._s.commit()
+        await self._s.refresh(assessment)
+        return assessment
+
+    async def get(self, assessment_id: str) -> Assessment | None:
+        return await self._s.get(Assessment, assessment_id)
+
+    async def latest_for_user(self, user_id: str) -> Assessment | None:
+        stmt = (
+            select(Assessment)
+            .where(Assessment.user_id == user_id)
+            .order_by(Assessment.started_at.desc())
+            .limit(1)
+        )
+        return (await self._s.execute(stmt)).scalar_one_or_none()
+
+    async def latest_scored(self, user_id: str) -> Assessment | None:
+        stmt = (
+            select(Assessment)
+            .where(Assessment.user_id == user_id, Assessment.status == AssessmentStatus.SCORED)
+            .order_by(Assessment.started_at.desc())
+            .limit(1)
+        )
+        return (await self._s.execute(stmt)).scalar_one_or_none()
+
+    async def pending_for(self, user_id: str, skill: str) -> Assessment | None:
+        """An in-flight (unsubmitted) assessment for this skill — resumed on re-start
+        so a candidate can't farm fresh questions by hitting start repeatedly."""
+        stmt = (
+            select(Assessment)
+            .where(
+                Assessment.user_id == user_id,
+                Assessment.skill == skill,
+                Assessment.status == AssessmentStatus.PENDING,
+            )
+            .order_by(Assessment.started_at.desc())
+            .limit(1)
+        )
+        return (await self._s.execute(stmt)).scalar_one_or_none()
+
+    async def recent_attempt_count(self, user_id: str, skill: str, since: datetime) -> int:
+        stmt = select(func.count(Assessment.id)).where(
+            Assessment.user_id == user_id,
+            Assessment.skill == skill,
+            Assessment.started_at >= since,
+        )
+        return (await self._s.execute(stmt)).scalar_one()
+
+    async def last_submitted_at(self, user_id: str, skill: str) -> datetime | None:
+        stmt = (
+            select(Assessment.submitted_at)
+            .where(
+                Assessment.user_id == user_id,
+                Assessment.skill == skill,
+                Assessment.submitted_at.is_not(None),
+            )
+            .order_by(Assessment.submitted_at.desc())
+            .limit(1)
+        )
+        return (await self._s.execute(stmt)).scalar_one_or_none()
+
+    async def record_result(
+        self,
+        assessment_id: str,
+        *,
+        answers: list,
+        integrity: dict,
+        duration_seconds: int,
+        score: int,
+        verdict: AssessmentVerdict,
+        evidence: dict,
+    ) -> None:
+        await self._s.execute(
+            update(Assessment)
+            .where(Assessment.id == assessment_id)
+            .values(
+                answers=answers, integrity=integrity, duration_seconds=duration_seconds,
+                score=score, verdict=verdict, evidence=evidence,
+                status=AssessmentStatus.SCORED, submitted_at=datetime.now(UTC),
+            )
+        )
         await self._s.commit()

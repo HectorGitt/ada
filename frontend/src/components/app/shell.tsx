@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BadgeCheck,
   CreditCard,
   FileText,
   Inbox,
@@ -44,6 +45,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { href: "/app/documents", label: "Documents", icon: FileText },
       { href: "/app/applications", label: "Applications", icon: Send },
       { href: "/app/intros", label: "Intros", icon: Inbox },
+      { href: "/app/verify", label: "Get verified", icon: BadgeCheck },
     ],
   },
   {
