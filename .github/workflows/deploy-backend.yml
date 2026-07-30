@@ -1,0 +1,70 @@
+name: Deploy backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+env:
+  PROJECT: closetic
+  REGION: us-central1
+  IMAGE: us-central1-docker.pkg.dev/closetic/cloud-run-source-deploy/ada
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Keyless auth: GitHub's OIDC token is exchanged for the deployer service
+    # account via Workload Identity Federation — no JSON keys stored anywhere.
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/968838168792/locations/global/workloadIdentityPools/github/providers/github-oidc
+          service_account: github-deployer@closetic.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build image
+        run: |
+          gcloud builds submit backend \
+            --tag "$IMAGE:$GITHUB_SHA" \
+            --project "$PROJECT" \
+            --quiet
+
+      - name: Run migrations (release step)
+        run: |
+          gcloud run jobs update ada-migrate --image "$IMAGE:$GITHUB_SHA" \
+            --region "$REGION" --project "$PROJECT" --quiet
+          gcloud run jobs execute ada-migrate \
+            --region "$REGION" --project "$PROJECT" --wait --quiet
+
+      - name: Deploy service
+        run: |
+          gcloud run deploy ada --image "$IMAGE:$GITHUB_SHA" \
+            --region "$REGION" --project "$PROJECT" --quiet
+
+      - name: Point cron jobs at the new image
+        run: |
+          for job in ada-ingest ada-digest; do
+            gcloud run jobs update "$job" --image "$IMAGE:$GITHUB_SHA" \
+              --region "$REGION" --project "$PROJECT" --quiet
+          done
+
+      - name: Smoke check
+        run: |
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' https://ada-968838168792.us-central1.run.app/api/healthz)
+            [ "$code" = "200" ] && echo "healthy" && exit 0
+            sleep 5
+          done
+          echo "service unhealthy after deploy" && exit 1
