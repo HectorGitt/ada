@@ -51,7 +51,7 @@ export function ApplyButton({ jobId, runId }: { jobId: number; runId?: string })
     setBusy(true);
     setError("");
     try {
-      await api.putIdentity(fullName.trim(), phone.trim() || null);
+      await api.putIdentity({ full_name: fullName.trim(), phone: phone.trim() || null });
       setPhase({ kind: "idle" });
       await start();
     } catch (err) {

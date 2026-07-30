@@ -319,6 +319,11 @@ export default function Landing() {
                 <Link href="/app/coach" className="block transition-colors hover:text-ink">Ask Ada</Link>
                 <Link href="/login" className="block transition-colors hover:text-ink">Sign in</Link>
               </div>
+              <div className="space-y-2">
+                <p className="font-medium text-ink">Legal</p>
+                <a href="https://recrulus.com/privacy" className="block transition-colors hover:text-ink">Privacy</a>
+                <a href="https://recrulus.com/terms" className="block transition-colors hover:text-ink">Terms</a>
+              </div>
             </nav>
           </div>
           <p className="mt-8 border-t border-line pt-6 text-xs text-muted">

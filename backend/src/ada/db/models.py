@@ -138,6 +138,9 @@ class Profile(Base):
     profile_text: Mapped[str] = mapped_column(Text)
     full_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Captured at onboarding; shown to employers on the shortlist and respected in matching.
+    compensation: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    work_pref: Mapped[str | None] = mapped_column(String(20), nullable=True)  # remote|hybrid|onsite
     # Employer-discovery opt-in (the channel-conflict wall) + the search vector/analysis.
     discoverable: Mapped[bool] = mapped_column(default=False, index=True)
     headline: Mapped[str | None] = mapped_column(String(200), nullable=True)

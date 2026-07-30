@@ -199,15 +199,17 @@ class ProfileRepository:
         return profile
 
     async def set_identity(
-        self, *, user_id: str, full_name: str, phone: str | None
+        self, *, user_id: str, full_name: str, phone: str | None,
+        compensation: str | None = None, work_pref: str | None = None,
     ) -> Profile:
+        fields = {
+            "full_name": full_name, "phone": phone,
+            "compensation": compensation, "work_pref": work_pref,
+        }
         stmt = (
             insert(Profile)
-            .values(user_id=user_id, profile_text="", full_name=full_name, phone=phone)
-            .on_conflict_do_update(
-                index_elements=["user_id"],
-                set_={"full_name": full_name, "phone": phone},
-            )
+            .values(user_id=user_id, profile_text="", **fields)
+            .on_conflict_do_update(index_elements=["user_id"], set_=fields)
         )
         await self._s.execute(stmt)
         await self._s.commit()

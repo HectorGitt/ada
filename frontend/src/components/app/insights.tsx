@@ -109,6 +109,35 @@ export function CandidateInsights() {
             </span>
           ))}
         </div>
+        {insight.experience && insight.experience.length > 0 && (
+          <>
+            <p className="eyebrow mb-2 mt-5">Experience</p>
+            <ul className="space-y-1 text-sm text-muted">
+              {insight.experience.map((e) => (
+                <li key={e}>{e}</li>
+              ))}
+            </ul>
+          </>
+        )}
+        {(insight.compensation || insight.work_pref || insight.education) && (
+          <div className="mt-5 flex flex-wrap gap-2 text-xs">
+            {insight.work_pref && (
+              <span className="rounded-full bg-surface-2 px-3 py-1 capitalize text-muted">
+                {insight.work_pref}
+              </span>
+            )}
+            {insight.compensation && (
+              <span className="rounded-full bg-surface-2 px-3 py-1 text-muted">
+                {insight.compensation}
+              </span>
+            )}
+            {insight.education && (
+              <span className="rounded-full bg-surface-2 px-3 py-1 text-muted">
+                {insight.education}
+              </span>
+            )}
+          </div>
+        )}
         <p className="eyebrow mb-2 mt-5">Market fit</p>
         <p className="text-sm leading-relaxed text-muted">{insight.market_fit}</p>
       </div>

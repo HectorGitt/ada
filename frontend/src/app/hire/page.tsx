@@ -283,7 +283,13 @@ function CandidateRow({ jobId, c }: { jobId: number; c: CandidateCard }) {
             <StatusBadge tone={verdict.tone}>{verdict.label}</StatusBadge>
           </div>
           <p className="mt-0.5 text-xs text-muted">
-            {[c.seniority, c.years_experience ? `${c.years_experience}y` : null, c.location]
+            {[
+              c.seniority,
+              c.years_experience ? `${c.years_experience}y` : null,
+              c.location,
+              c.work_pref,
+              c.compensation,
+            ]
               .filter(Boolean)
               .join(" · ")}
           </p>

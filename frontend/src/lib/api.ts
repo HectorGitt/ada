@@ -105,6 +105,8 @@ export interface Profile {
   linkedin_url: string | null;
   full_name: string | null;
   phone: string | null;
+  compensation: string | null;
+  work_pref: string | null;
   updated_at: string;
 }
 
@@ -119,9 +121,13 @@ export interface CandidateInsight {
   seniority: string;
   years_experience: number;
   location: string;
+  experience: string[];
+  education: string;
   top_skills: string[];
   strengths: string[];
   growth_areas: string[];
+  compensation: string;
+  work_pref: string;
   market_fit: string;
   readiness_score: number;
   summary: string;
@@ -150,6 +156,8 @@ export interface CandidateCard {
   seniority: string | null;
   years_experience: number | null;
   top_skills: string[];
+  compensation: string | null;
+  work_pref: string | null;
   match: number;
   verdict: string;
   rationale: string;
@@ -419,10 +427,15 @@ export const api = {
       { method: "POST", body: JSON.stringify({ run_id: runId ?? null }) },
     ),
   listApplications: () => request<ApplicationSummary[]>("/api/applications"),
-  putIdentity: (full_name: string, phone: string | null) =>
+  putIdentity: (fields: {
+    full_name: string;
+    phone: string | null;
+    compensation?: string | null;
+    work_pref?: string | null;
+  }) =>
     request<Profile>("/api/profile/identity", {
       method: "PUT",
-      body: JSON.stringify({ full_name, phone }),
+      body: JSON.stringify(fields),
     }),
 
   // subscriptions

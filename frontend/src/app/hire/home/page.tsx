@@ -229,6 +229,12 @@ export default function UcheLanding() {
             <a href="https://ada.recrulus.com" className="transition-colors hover:text-ink">
               Ada ↗
             </a>
+            <a href="https://recrulus.com/privacy" className="transition-colors hover:text-ink">
+              Privacy
+            </a>
+            <a href="https://recrulus.com/terms" className="transition-colors hover:text-ink">
+              Terms
+            </a>
           </span>
         </div>
       </footer>

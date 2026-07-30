@@ -83,6 +83,8 @@ export default function ProfilePage() {
   const [linkedinUrl, setLinkedinUrl] = useState("");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
+  const [compensation, setCompensation] = useState("");
+  const [workPref, setWorkPref] = useState("");
   const [identitySaving, setIdentitySaving] = useState(false);
   const [identitySaved, setIdentitySaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -98,6 +100,8 @@ export default function ProfilePage() {
           setLinkedinUrl(p.linkedin_url ?? "");
           setFullName(p.full_name ?? "");
           setPhone(p.phone ?? "");
+          setCompensation(p.compensation ?? "");
+          setWorkPref(p.work_pref ?? "");
         }
       })
       .finally(() => setLoaded(true));
@@ -126,7 +130,12 @@ export default function ProfilePage() {
     setIdentitySaving(true);
     setError("");
     try {
-      await api.putIdentity(fullName.trim(), phone.trim() || null);
+      await api.putIdentity({
+        full_name: fullName.trim(),
+        phone: phone.trim() || null,
+        compensation: compensation.trim() || null,
+        work_pref: workPref || null,
+      });
       setIdentitySaved(true);
       setTimeout(() => setIdentitySaved(false), 2000);
     } catch (err) {
@@ -191,7 +200,34 @@ export default function ProfilePage() {
                 onChange={(e) => setPhone(e.target.value)}
               />
             </div>
+            <div>
+              <Label htmlFor="compensation">Compensation expectation</Label>
+              <Input
+                id="compensation"
+                placeholder="e.g. ₦8–12M or $60–90k"
+                value={compensation}
+                onChange={(e) => setCompensation(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="work-pref">Work preference</Label>
+              <select
+                id="work-pref"
+                value={workPref}
+                onChange={(e) => setWorkPref(e.target.value)}
+                className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm text-ink outline-none transition-all focus:border-accent focus:ring-2 focus:ring-accent/20"
+              >
+                <option value="">No preference</option>
+                <option value="remote">Remote</option>
+                <option value="hybrid">Hybrid</option>
+                <option value="onsite">On-site</option>
+              </select>
+            </div>
           </div>
+          <p className="text-xs text-muted">
+            Shared with employers only if you turn on discovery below — it sharpens your
+            matches either way.
+          </p>
           <Button type="submit" loading={identitySaving} variant="secondary">
             {identitySaved ? (
               <>

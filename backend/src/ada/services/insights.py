@@ -30,9 +30,15 @@ class CandidateInsight(BaseModel):
     seniority: str = Field(description="One of: entry, junior, mid, senior, lead, executive")
     years_experience: int = Field(ge=0, le=60)
     location: str = Field(default="", description="City/region if stated, else empty")
+    experience: list[str] = Field(
+        default_factory=list, description="Up to 5 recent roles as 'Title — Company (dates)'"
+    )
+    education: str = Field(default="", description="Highest/most relevant qualification, if stated")
     top_skills: list[str] = Field(default_factory=list, description="5-10 concrete skills")
     strengths: list[str] = Field(default_factory=list, description="2-4 evidence-backed strengths")
     growth_areas: list[str] = Field(default_factory=list, description="1-3 development areas")
+    compensation: str = Field(default="", description="Pay expectation, only if explicitly stated")
+    work_pref: str = Field(default="", description="remote, hybrid, onsite, or empty if unstated")
     market_fit: str = Field(description="2-3 sentences: the roles/industries they fit and why")
     readiness_score: int = Field(ge=0, le=100)
     summary: str = Field(description="A warm 2-3 sentence summary addressed to the candidate")
@@ -66,9 +72,10 @@ class InsightService:
     def search_text(insight: CandidateInsight, profile_text: str, cv_text: str) -> str:
         """The text embedded as the candidate's search vector — insight-forward so
         employer role queries land near the right people."""
+        pref = f" Prefers {insight.work_pref} work." if insight.work_pref else ""
         return (
             f"{insight.headline}. {insight.seniority}, {insight.years_experience} years. "
-            f"Skills: {', '.join(insight.top_skills)}. {insight.market_fit}\n\n"
+            f"Skills: {', '.join(insight.top_skills)}.{pref} {insight.market_fit}\n\n"
             f"{cv_text or profile_text}"
         )
 

@@ -80,6 +80,9 @@ class UcheService:
                 "seniority": (p.insights or {}).get("seniority"),
                 "years_experience": (p.insights or {}).get("years_experience"),
                 "top_skills": (p.insights or {}).get("top_skills", [])[:8],
+                # User-set fields win; fall back to what Ada read from their story.
+                "compensation": p.compensation or (p.insights or {}).get("compensation") or None,
+                "work_pref": p.work_pref or (p.insights or {}).get("work_pref") or None,
                 "match": _fit(dist),
                 "verdict": "good",
                 "rationale": "",
