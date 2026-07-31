@@ -34,6 +34,7 @@ async def _cleanup(user_id: str) -> None:
 
     async with _session_factory() as s:
         await s.execute(text("DELETE FROM notifications WHERE user_id = :u"), {"u": user_id})
+        await s.execute(text("DELETE FROM notification_prefs WHERE user_id = :u"), {"u": user_id})
         await s.execute(text("DELETE FROM assessments WHERE user_id = :u"), {"u": user_id})
         await s.execute(text("DELETE FROM intros WHERE employer_id = :u"), {"u": user_id})
         await s.execute(delete(Job).where(Job.posted_by == user_id))

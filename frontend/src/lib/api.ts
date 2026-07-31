@@ -193,6 +193,18 @@ export interface CandidateIntro {
   remote: boolean;
 }
 
+export interface CvFix {
+  title: string;
+  detail: string;
+  quote: string;
+}
+
+export interface CvAssessment {
+  score: number;
+  headline: string;
+  fixes: CvFix[];
+}
+
 export interface CredentialAssessment {
   skill: string;
   score: number | null;
@@ -243,6 +255,12 @@ export interface NotificationsOut {
   items: AppNotification[];
 }
 
+export interface NotificationPrefs {
+  email: boolean;
+  whatsapp: boolean;
+  digest: boolean;
+}
+
 export interface Memory {
   id: number;
   content: string;
@@ -273,6 +291,22 @@ export interface ApplicationSummary {
   detail: string | null;
   submitted_at: string | null;
   created_at: string;
+}
+
+export type OutcomeStage = "applied" | "interviewing" | "offer" | "hired" | "rejected";
+
+export interface Outcome {
+  id: string;
+  company: string;
+  role_title: string;
+  stage: OutcomeStage;
+  source: string;
+  updated_at: string;
+}
+
+export interface Pipeline {
+  outcomes: Outcome[];
+  funnel: Record<string, number>;
 }
 
 export interface ChatMessage {
@@ -358,6 +392,13 @@ export const api = {
       body: JSON.stringify({ discoverable }),
     }),
 
+  // free public CV assessment (no auth)
+  assessCv: (cv_text: string, target_role: string | null) =>
+    request<CvAssessment>("/api/assess", {
+      method: "POST",
+      body: JSON.stringify({ cv_text, target_role }),
+    }),
+
   // verification credential (proctored assessment + identity attestation)
   myCredential: () => request<Credential>("/api/assessment"),
   startAssessment: (skill: string) =>
@@ -415,6 +456,31 @@ export const api = {
     request<{ ok: boolean }>("/api/notifications/read", {
       method: "POST",
       body: JSON.stringify({ id: id ?? null }),
+    }),
+  getNotificationPrefs: () =>
+    request<NotificationPrefs>("/api/notifications/preferences"),
+  setNotificationPrefs: (prefs: NotificationPrefs) =>
+    request<NotificationPrefs>("/api/notifications/preferences", {
+      method: "PUT",
+      body: JSON.stringify(prefs),
+    }),
+  unsubscribe: (token: string) =>
+    request<{ ok: boolean }>("/api/notifications/unsubscribe", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    }),
+
+  // web push
+  getVapidKey: () => request<{ key: string }>("/api/push/vapid-public-key"),
+  pushSubscribe: (sub: PushSubscriptionJSON) =>
+    request<{ status: string }>("/api/push/subscribe", {
+      method: "POST",
+      body: JSON.stringify(sub),
+    }),
+  pushUnsubscribe: (endpoint: string) =>
+    request<{ status: string }>("/api/push/unsubscribe", {
+      method: "POST",
+      body: JSON.stringify({ endpoint }),
     }),
 
   // runs
@@ -485,6 +551,19 @@ export const api = {
       { method: "POST", body: JSON.stringify({ run_id: runId ?? null }) },
     ),
   listApplications: () => request<ApplicationSummary[]>("/api/applications"),
+
+  // outcomes (hiring funnel)
+  getPipeline: () => request<Pipeline>("/api/outcomes"),
+  addOutcome: (company: string, role_title: string, stage: OutcomeStage) =>
+    request<Outcome>("/api/outcomes", {
+      method: "POST",
+      body: JSON.stringify({ company, role_title, stage }),
+    }),
+  advanceOutcome: (id: string, stage: OutcomeStage) =>
+    request<Outcome>(`/api/outcomes/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ stage }),
+    }),
   putIdentity: (fields: {
     full_name: string;
     phone: string | null;

@@ -19,7 +19,7 @@ def test_match_pct_pure():
 async def test_digest_sends_once_then_respects_cooldown():
     from sqlalchemy import delete
 
-    from ada.db.models import Job, Notification, Profile, User
+    from ada.db.models import Job, Notification, NotificationPref, Profile, User
     from ada.db.repositories import JobRepository, NotificationRepository, ProfileRepository
     from ada.db.session import _session_factory, init_db
     from ada.digest import DIGEST_KIND, run_digest
@@ -64,6 +64,7 @@ async def test_digest_sends_once_then_respects_cooldown():
     finally:
         async with _session_factory() as s:
             await s.execute(delete(Notification).where(Notification.user_id == uid))
+            await s.execute(delete(NotificationPref).where(NotificationPref.user_id == uid))
             if job_id is not None:
                 await s.execute(delete(Job).where(Job.id == job_id))
             await s.execute(delete(Profile).where(Profile.user_id == uid))

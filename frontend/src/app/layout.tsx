@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Instrument_Serif } from "next/font/google";
 import "./globals.css";
 
+import { PwaRegister } from "@/components/app/pwa-register";
+
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const instrumentSerif = Instrument_Serif({
   subsets: ["latin"],
@@ -50,7 +52,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body className={`${inter.variable} ${instrumentSerif.variable}`}>{children}</body>
+      <body className={`${inter.variable} ${instrumentSerif.variable}`}>
+        <PwaRegister />
+        {children}
+      </body>
     </html>
   );
 }

@@ -12,13 +12,12 @@ from ada.auth.dependencies import current_user
 from ada.db.models import Intro, IntroStatus, User
 from ada.db.repositories import (
     IntroRepository,
-    JobRepository,
     ProfileRepository,
     RunRepository,
 )
 from ada.db.session import get_session
 from ada.services.insights import refresh_candidate
-from ada.services.notify import connect_parties, notify
+from ada.services.intros import respond_to_intro
 
 router = APIRouter(prefix="/candidate", tags=["candidate"])
 
@@ -101,38 +100,12 @@ async def respond_intro(
     if body.action not in ("accept", "decline"):
         raise HTTPException(422, "action must be 'accept' or 'decline'.")
     status = IntroStatus.ACCEPTED if body.action == "accept" else IntroStatus.DECLINED
-    intros = IntroRepository(session)
     intro = await session.get(Intro, intro_id)
-    moved = await intros.respond(intro_id, user.id, status)
+    if intro is None:
+        raise HTTPException(404, "Intro not found or already answered.")
+    moved = await respond_to_intro(
+        intro=intro, responder_id=user.id, status=status, schedule=background.add_task
+    )
     if not moved:
         raise HTTPException(404, "Intro not found or already answered.")
-    if intro is not None:
-        profile = await ProfileRepository(session).get(user.id)
-        who = (profile.full_name if profile else None) or "A candidate"
-        if body.action == "accept":
-            background.add_task(
-                notify, intro.employer_id, kind="intro_accepted",
-                title=f"{who} accepted your intro",
-                body="They're open to talking — their contact is on the intro in your console.",
-                link="/hire/intros",
-            )
-            # Warm two-way introduction email connecting both sides.
-            employer = await session.get(User, intro.employer_id)
-            job = await JobRepository(session).get(intro.job_id)
-            if employer is not None and job is not None:
-                background.add_task(
-                    connect_parties,
-                    candidate_email=user.email,
-                    candidate_name=who,
-                    employer_email=employer.email,
-                    company=employer.company or job.company,
-                    role_title=job.title,
-                )
-        else:
-            background.add_task(
-                notify, intro.employer_id, kind="intro_declined",
-                title=f"{who} passed on this role",
-                body="No hard feelings — Uche will keep surfacing better-fit candidates.",
-                link="/hire/intros",
-            )
     return {"status": str(status)}

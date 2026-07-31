@@ -7,10 +7,11 @@ Idempotency and exactly-once execution are enforced here as atomic SQL:
     UPDATE ... WHERE status = PAID, so concurrent workers cannot both run the same job.
 """
 import re
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,8 +26,12 @@ from ada.db.models import (
     IntroStatus,
     Job,
     Notification,
+    NotificationPref,
+    Outcome,
+    OutcomeStage,
     ProcessedEvent,
     Profile,
+    PushSubscription,
     Run,
     RunStatus,
     Subscription,
@@ -182,6 +187,16 @@ class ProfileRepository:
 
     async def get(self, user_id: str) -> Profile | None:
         return await self._s.get(Profile, user_id)
+
+    async def by_phone(self, digits: str) -> Profile | None:
+        """Find a profile by the trailing digits of its phone — used to map an inbound
+        WhatsApp `From` to the candidate, tolerant of '+', country code and formatting.
+        Empty/too-short input matches nothing."""
+        if len(digits) < 7:
+            return None
+        normalized = func.regexp_replace(Profile.phone, r"\D", "", "g")
+        stmt = select(Profile).where(normalized.like(f"%{digits}")).limit(1)
+        return (await self._s.execute(stmt)).scalar_one_or_none()
 
     async def upsert(
         self, *, user_id: str, profile_text: str, linkedin_url: str | None
@@ -751,6 +766,19 @@ class IntroRepository:
         rows = (await self._s.execute(stmt)).all()
         return [(row[0], row[1], row[2]) for row in rows]
 
+    async def latest_requested_for_candidate(self, candidate_id: str) -> Intro | None:
+        """The candidate's most recent still-open intro — the one a WhatsApp reply answers."""
+        stmt = (
+            select(Intro)
+            .where(
+                Intro.candidate_id == candidate_id,
+                Intro.status == IntroStatus.REQUESTED,
+            )
+            .order_by(Intro.created_at.desc())
+            .limit(1)
+        )
+        return (await self._s.execute(stmt)).scalar_one_or_none()
+
     async def respond(
         self, intro_id: str, candidate_id: str, status: IntroStatus
     ) -> bool:
@@ -908,3 +936,157 @@ class AssessmentRepository:
             )
         )
         await self._s.commit()
+
+
+class NotificationPrefRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def get_or_create(self, user_id: str) -> NotificationPref:
+        pref = await self._s.get(NotificationPref, user_id)
+        if pref is None:
+            pref = NotificationPref(user_id=user_id, unsubscribe_token=uuid.uuid4().hex)
+            self._s.add(pref)
+            await self._s.commit()
+            await self._s.refresh(pref)
+        return pref
+
+    async def update(
+        self, user_id: str, *, email: bool, whatsapp: bool, digest: bool
+    ) -> NotificationPref:
+        pref = await self.get_or_create(user_id)
+        await self._s.execute(
+            update(NotificationPref)
+            .where(NotificationPref.user_id == user_id)
+            .values(email_enabled=email, whatsapp_enabled=whatsapp, digest_enabled=digest)
+        )
+        await self._s.commit()
+        pref.email_enabled, pref.whatsapp_enabled, pref.digest_enabled = email, whatsapp, digest
+        return pref
+
+    async def by_token(self, token: str) -> NotificationPref | None:
+        stmt = select(NotificationPref).where(NotificationPref.unsubscribe_token == token)
+        return (await self._s.execute(stmt)).scalar_one_or_none()
+
+    async def unsubscribe_all(self, token: str) -> bool:
+        """One-click unsubscribe from the email footer — kills every side channel."""
+        stmt = (
+            update(NotificationPref)
+            .where(NotificationPref.unsubscribe_token == token)
+            .values(email_enabled=False, whatsapp_enabled=False, digest_enabled=False)
+            .returning(NotificationPref.user_id)
+        )
+        ok = (await self._s.execute(stmt)).scalar_one_or_none() is not None
+        await self._s.commit()
+        return ok
+
+
+class PushSubscriptionRepository:
+    """Browser Web Push endpoints, one per device. Dead endpoints are pruned on send."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def upsert(self, *, user_id: str, endpoint: str, p256dh: str, auth: str) -> None:
+        """Register (or re-point) a subscription. The endpoint is the identity, so a
+        browser that re-subscribes updates its keys and owner in place."""
+        stmt = (
+            insert(PushSubscription)
+            .values(user_id=user_id, endpoint=endpoint, p256dh=p256dh, auth=auth)
+            .on_conflict_do_update(
+                index_elements=["endpoint"],
+                set_={"user_id": user_id, "p256dh": p256dh, "auth": auth},
+            )
+        )
+        await self._s.execute(stmt)
+        await self._s.commit()
+
+    async def list_for_user(self, user_id: str) -> list[PushSubscription]:
+        stmt = select(PushSubscription).where(PushSubscription.user_id == user_id)
+        return list((await self._s.execute(stmt)).scalars().all())
+
+    async def delete(self, endpoint: str) -> None:
+        await self._s.execute(
+            delete(PushSubscription).where(PushSubscription.endpoint == endpoint)
+        )
+        await self._s.commit()
+
+
+class OutcomeRepository:
+    """The candidate's hiring funnel — one row per role pursued, advanced through stages."""
+
+    # Stages are ordered; the funnel counts everyone who reached at least each stage.
+    _ORDER = [
+        OutcomeStage.APPLIED,
+        OutcomeStage.INTERVIEWING,
+        OutcomeStage.OFFER,
+        OutcomeStage.HIRED,
+    ]
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def seed(
+        self, *, user_id: str, job_id: int | None, company: str, role_title: str, source: str
+    ) -> None:
+        """Record that a pursuit began, if we aren't already tracking it. Never regresses
+        a stage the candidate has already advanced — insert-only, on-conflict-do-nothing."""
+        if job_id is None:  # a unique constraint on (user, NULL) won't dedupe — skip seeding
+            return
+        stmt = (
+            insert(Outcome)
+            .values(
+                id=uuid.uuid4().hex, user_id=user_id, job_id=job_id, company=company,
+                role_title=role_title, stage=OutcomeStage.APPLIED, source=source,
+            )
+            .on_conflict_do_nothing(constraint="uq_outcome_user_job")
+        )
+        await self._s.execute(stmt)
+        await self._s.commit()
+
+    async def create_manual(
+        self, *, user_id: str, company: str, role_title: str, stage: OutcomeStage
+    ) -> Outcome:
+        outcome = Outcome(
+            id=uuid.uuid4().hex, user_id=user_id, job_id=None, company=company,
+            role_title=role_title, stage=stage, source="manual",
+        )
+        self._s.add(outcome)
+        await self._s.commit()
+        await self._s.refresh(outcome)
+        return outcome
+
+    async def set_stage(
+        self, *, outcome_id: str, user_id: str, stage: OutcomeStage
+    ) -> Outcome | None:
+        """Advance (or correct) a stage — scoped to the owner so one user can't touch
+        another's pipeline."""
+        stmt = (
+            update(Outcome)
+            .where(Outcome.id == outcome_id, Outcome.user_id == user_id)
+            .values(stage=stage)
+            .returning(Outcome)
+        )
+        row = (await self._s.execute(stmt)).scalar_one_or_none()
+        await self._s.commit()
+        return row
+
+    async def list_by_user(self, user_id: str, *, limit: int = 200) -> list[Outcome]:
+        stmt = (
+            select(Outcome)
+            .where(Outcome.user_id == user_id)
+            .order_by(Outcome.updated_at.desc())
+            .limit(limit)
+        )
+        return list((await self._s.execute(stmt)).scalars().all())
+
+    async def funnel(self, user_id: str) -> dict[str, int]:
+        """Count of pursuits currently at each stage. 'rejected' is terminal and reported
+        separately from the forward funnel."""
+        stmt = (
+            select(Outcome.stage, func.count(Outcome.id))
+            .where(Outcome.user_id == user_id)
+            .group_by(Outcome.stage)
+        )
+        rows = (await self._s.execute(stmt)).all()
+        return {str(stage): count for stage, count in rows}

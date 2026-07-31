@@ -12,7 +12,12 @@ from datetime import UTC, datetime, timedelta
 from ada.auth.mailer import send_email
 from ada.config import get_settings
 from ada.db.models import Profile
-from ada.db.repositories import JobRepository, NotificationRepository, ProfileRepository
+from ada.db.repositories import (
+    JobRepository,
+    NotificationPrefRepository,
+    NotificationRepository,
+    ProfileRepository,
+)
 from ada.db.session import _session_factory
 from ada.observability import configure_logging, log
 from ada.services.notify import notify
@@ -55,6 +60,9 @@ def _email_html(name: str, roles: list[dict]) -> str:
 async def _digest_for_candidate(profile: Profile) -> bool:
     s = get_settings()
     async with _session_factory() as session:
+        pref = await NotificationPrefRepository(session).get_or_create(profile.user_id)
+        if not pref.digest_enabled:
+            return False
         notifs = NotificationRepository(session)
         last = await notifs.last_of_kind(profile.user_id, DIGEST_KIND)
         if _within_cooldown(last, s.digest_cooldown_seconds):

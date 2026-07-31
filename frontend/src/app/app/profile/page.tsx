@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { CandidateInsights } from "@/components/app/insights";
+import { NotificationPreferences } from "@/components/app/notification-prefs";
 import { useAuth } from "@/components/app/shell";
 import {
   Button,
@@ -282,6 +283,8 @@ export default function ProfilePage() {
           </Button>
         </form>
       </Card>
+
+      <NotificationPreferences />
 
       <Memories />
 

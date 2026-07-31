@@ -176,6 +176,7 @@ async def request_intro(
             body=f"{company} is hiring for {job.title} and would like to talk. "
                  "Open your intros to accept or decline.",
             link="/app/intros",
+            whatsapp_suffix="Reply YES to connect or NO to pass.",
         )
     return {"intro_id": intro.id, "status": str(intro.status), "already_requested": not created}
 

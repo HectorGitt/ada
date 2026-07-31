@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     digest_matches: int = 4
     digest_cooldown_seconds: int = 6 * 24 * 3600  # ~weekly; re-runs inside this are no-ops
 
+    # free CV assessment (public top-of-funnel) — per-IP rate limit
+    assess_rate_limit: int = 5
+    assess_rate_window_seconds: int = 3600
+
     # verification credential — proctored assessment
     verify_pass_mark: int = 60
     verify_time_limit_seconds: int = 1800        # server-authoritative; over = can't certify
@@ -78,6 +82,17 @@ class Settings(BaseSettings):
     twilio_account_sid: str = Field(default="", repr=False)
     twilio_auth_token: str = Field(default="", repr=False)
     twilio_whatsapp_from: str = ""  # e.g. "whatsapp:+14155238886" (Twilio sandbox)
+    # Reject inbound WhatsApp webhooks whose Twilio signature doesn't verify. On by
+    # default; only turn off for local testing without a signature.
+    twilio_validate_signature: bool = True
+
+    # Web Push (VAPID). Generate a P-256 keypair once (scripts/gen_vapid.py); public key
+    # is base64url of the uncompressed point, private key base64url of the 32-byte scalar.
+    # Unset = push channel skipped (no subscriptions can be created), logged.
+    vapid_public_key: str = ""
+    vapid_private_key: str = Field(default="", repr=False)
+    vapid_subject: str = "mailto:ops@ada.dev"  # RFC 8292 contact for the push service
+
     frontend_base_url: str = "http://localhost:3000"  # for links inside notifications
 
     # paystack (NGN)

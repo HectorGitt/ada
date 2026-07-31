@@ -284,6 +284,61 @@ class Notification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class OutcomeStage(StrEnum):
+    APPLIED = "applied"
+    INTERVIEWING = "interviewing"
+    OFFER = "offer"
+    HIRED = "hired"
+    REJECTED = "rejected"
+
+
+class Outcome(Base):
+    """A candidate's progress on one role — the hiring funnel that turns Ada's work into
+    measurable results. Auto-seeded when Ada applies, advanced by the candidate. The data
+    that makes the verification credential self-proving (verified → hired rates)."""
+    __tablename__ = "outcomes"
+    __table_args__ = (UniqueConstraint("user_id", "job_id", name="uq_outcome_user_job"),)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    job_id: Mapped[int | None] = mapped_column(ForeignKey("jobs.id"), nullable=True, index=True)
+    company: Mapped[str] = mapped_column(String(256))
+    role_title: Mapped[str] = mapped_column(String(256))
+    stage: Mapped[OutcomeStage] = mapped_column(
+        String(16), default=OutcomeStage.APPLIED, index=True
+    )
+    source: Mapped[str] = mapped_column(String(16), default="one_click")  # one_click|intro|manual
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class PushSubscription(Base):
+    """A browser's Web Push endpoint + its encryption keys, so Ada can notify a closed tab.
+    One row per device/browser; deduped on the endpoint URL."""
+    __tablename__ = "push_subscriptions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    endpoint: Mapped[str] = mapped_column(String(1024), unique=True)
+    p256dh: Mapped[str] = mapped_column(String(256))
+    auth: Mapped[str] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class NotificationPref(Base):
+    """Per-user delivery preferences + a stable unsubscribe token. Defaults to all-on;
+    the in-app centre is never suppressed — these gate the email/WhatsApp side channels."""
+    __tablename__ = "notification_prefs"
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    email_enabled: Mapped[bool] = mapped_column(default=True)
+    whatsapp_enabled: Mapped[bool] = mapped_column(default=True)
+    digest_enabled: Mapped[bool] = mapped_column(default=True)
+    unsubscribe_token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class AssessmentStatus(StrEnum):
     PENDING = "pending"      # task issued, not yet submitted
     SUBMITTED = "submitted"  # answers in, awaiting scoring

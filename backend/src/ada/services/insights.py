@@ -86,6 +86,9 @@ async def refresh_candidate(user_id: str, profiles: ProfileRepository, runs: Run
     profile = await profiles.get(user_id)
     if profile is None or len((profile.profile_text or "").strip()) < 30:
         return False
+    # The first time Ada forms a read is the moment to reach out (email + WhatsApp) with
+    # what she sees — the "she gets me" hello. Recomputes after that stay silent.
+    first_read = profile.insights is None
     cv_text = ""
     for run in await runs.list_by_user(user_id):
         if run.rewritten_cv:
@@ -121,4 +124,56 @@ async def refresh_candidate(user_id: str, profiles: ProfileRepository, runs: Run
         headline=insight.headline if insight else None,
         location=(insight.location or None) if insight else None,
     )
+    if insight is not None and first_read:
+        await _greet_with_read(user_id, insight)
     return True
+
+
+async def _greet_with_read(user_id: str, insight: CandidateInsight) -> None:
+    """Ada's first hello: message the candidate (email + WhatsApp) with what she sees, and
+    seed a few durable memories so she remembers them in chat. All best-effort — a reach-out
+    must never break the analysis that triggered it."""
+    from ada.services.notify import notify
+
+    body = insight.summary.strip()
+    if insight.experience:
+        body += "\n\nWhat I noted: " + "; ".join(insight.experience[:2]) + "."
+    try:
+        await notify(
+            user_id, kind="ada_read",
+            title=f"Ada here — I read your profile: {insight.headline}",
+            body=body, link="/app/profile",
+        )
+    except Exception as exc:  # noqa: BLE001 — reach-out is best-effort
+        log.warning("ada_read_notify_failed", user_id=user_id, error=str(exc))
+
+    await _remember_experience(user_id, insight)
+
+
+def _experience_facts(insight: CandidateInsight) -> list[str]:
+    """A few durable facts about the candidate's background, for Ada's long-term memory."""
+    facts: list[str] = []
+    if insight.years_experience:
+        facts.append(f"{insight.years_experience} years' experience as {insight.headline}.")
+    facts.extend(f"Experience: {role}" for role in insight.experience[:2])
+    if insight.top_skills:
+        facts.append("Key skills: " + ", ".join(insight.top_skills[:6]) + ".")
+    return facts
+
+
+async def _remember_experience(user_id: str, insight: CandidateInsight) -> None:
+    """Persist Ada's read as long-term memory so 'Ask Ada' recalls their background."""
+    from ada.db.repositories import UserMemoryRepository
+    from ada.db.session import _session_factory
+
+    facts = _experience_facts(insight)
+    if not facts:
+        return
+    try:
+        vectors = await SearchService().embed_many(facts)
+        async with _session_factory() as session:
+            await UserMemoryRepository(session).add_many(
+                user_id, list(zip(facts, vectors, strict=True)), source="onboarding"
+            )
+    except Exception as exc:  # noqa: BLE001 — embeddings may be unavailable; memory is optional
+        log.warning("ada_read_memory_skipped", user_id=user_id, error=str(exc))

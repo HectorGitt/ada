@@ -8,6 +8,7 @@ from ada.db.models import ApplicationStatus, Job, Profile, RunStatus, User
 from ada.db.repositories import (
     ApplicationRepository,
     JobRepository,
+    OutcomeRepository,
     ProfileRepository,
     RunRepository,
 )
@@ -152,6 +153,12 @@ async def run_submission(application_id: str) -> None:
                      f"We hit a snag applying to {role} — nothing was submitted. Try again.")
         elif outcome.status == "submitted":
             await applications.set_status(application_id, ApplicationStatus.SUBMITTED)
+            if application is not None and job is not None:
+                # Start tracking this pursuit in the candidate's funnel (idempotent).
+                await OutcomeRepository(session).seed(
+                    user_id=application.user_id, job_id=job.id, company=job.company,
+                    role_title=job.title, source="one_click",
+                )
             log.info("apply_submitted", application_id=application_id)
             _note = ("application_submitted", "Application submitted",
                      f"Ada submitted your application to {role}.")

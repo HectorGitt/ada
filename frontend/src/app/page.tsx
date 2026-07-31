@@ -88,6 +88,9 @@ function Nav() {
           <a href="#faqs" className="rounded-full px-3 py-1.5 transition-colors hover:bg-line/40 hover:text-ink">
             FAQs
           </a>
+          <Link href="/assess" className="rounded-full px-3 py-1.5 transition-colors hover:bg-line/40 hover:text-ink">
+            Free CV check
+          </Link>
           <Link href="/hire" className="rounded-full px-3 py-1.5 transition-colors hover:bg-line/40 hover:text-ink">
             For employers
           </Link>

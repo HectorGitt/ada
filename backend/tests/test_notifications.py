@@ -71,6 +71,45 @@ async def test_notify_writes_inapp_and_tolerates_missing_channels():
             assert items[0].link == "/app/intros"
     finally:
         async with _session_factory() as s:
+            from ada.db.models import NotificationPref
+
             await s.execute(delete(Notification).where(Notification.user_id == uid))
+            await s.execute(delete(NotificationPref).where(NotificationPref.user_id == uid))
+            await s.execute(delete(User).where(User.id == uid))
+            await s.commit()
+
+
+@_db
+async def test_notification_prefs_and_unsubscribe():
+    from sqlalchemy import delete
+
+    from ada.db.models import NotificationPref, User
+    from ada.db.repositories import NotificationPrefRepository
+    from ada.db.session import _session_factory, init_db
+
+    await init_db()
+    uid = uuid.uuid4().hex
+    try:
+        async with _session_factory() as s:
+            s.add(User(id=uid, email=f"{uid}@ex.com"))
+            await s.commit()
+            repo = NotificationPrefRepository(s)
+            pref = await repo.get_or_create(uid)
+            assert pref.email_enabled and pref.whatsapp_enabled and pref.digest_enabled
+            assert pref.unsubscribe_token
+            token = pref.unsubscribe_token
+            assert (await repo.get_or_create(uid)).unsubscribe_token == token
+
+            updated = await repo.update(uid, email=False, whatsapp=True, digest=False)
+            assert updated.email_enabled is False and updated.digest_enabled is False
+
+            assert (await repo.by_token(token)).user_id == uid
+            assert await repo.unsubscribe_all(token) is True
+            after = await repo.get_or_create(uid)
+            assert not (after.email_enabled or after.whatsapp_enabled or after.digest_enabled)
+            assert await repo.unsubscribe_all("nope") is False
+    finally:
+        async with _session_factory() as s:
+            await s.execute(delete(NotificationPref).where(NotificationPref.user_id == uid))
             await s.execute(delete(User).where(User.id == uid))
             await s.commit()

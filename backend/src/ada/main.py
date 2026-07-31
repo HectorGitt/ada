@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from ada.api.routes import (
     account,
     applications,
+    assess,
     auth,
     candidate,
     chat,
@@ -16,12 +17,15 @@ from ada.api.routes import (
     jobs,
     memories,
     notifications,
+    outcomes,
     profile,
+    push,
     runs,
     subscriptions,
     verification,
     voice,
     webhooks,
+    whatsapp,
 )
 from ada.config import get_settings
 from ada.db.session import init_db
@@ -52,20 +56,24 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(health.router, prefix="/api")
+    app.include_router(assess.router, prefix="/api")
     app.include_router(auth.router, prefix="/api")
     app.include_router(profile.router, prefix="/api")
     app.include_router(documents.router, prefix="/api")
     app.include_router(memories.router, prefix="/api")
     app.include_router(notifications.router, prefix="/api")
+    app.include_router(push.router, prefix="/api")
     app.include_router(chat.router, prefix="/api")
     app.include_router(jobs.router, prefix="/api")
     app.include_router(applications.router, prefix="/api")
+    app.include_router(outcomes.router, prefix="/api")
     app.include_router(subscriptions.router, prefix="/api")
     app.include_router(account.router, prefix="/api")
     app.include_router(candidate.router, prefix="/api")
     app.include_router(employer.router, prefix="/api")
     app.include_router(runs.router, prefix="/api")
     app.include_router(webhooks.router, prefix="/api")
+    app.include_router(whatsapp.router, prefix="/api")
     app.include_router(verification.router, prefix="/api")
     app.include_router(voice.router, prefix="/api")
     return app

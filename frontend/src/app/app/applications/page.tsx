@@ -12,6 +12,7 @@ import {
   Skeleton,
   StatusBadge,
 } from "@/components/ui";
+import { PipelinePanel } from "@/components/app/pipeline";
 import { api, type ApplicationSummary } from "@/lib/api";
 
 const STATUS: Record<
@@ -46,6 +47,7 @@ export default function ApplicationsPage() {
         title="Applications."
         subtitle="Every application Ada has made for you, and where each one stands."
       />
+      <PipelinePanel />
       {apps === null ? (
         <div className="space-y-3">
           {[0, 1].map((i) => (

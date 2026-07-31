@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { ScrollView, TextInput, View } from "react-native";
+import { Pressable, ScrollView, TextInput, View } from "react-native";
 
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
@@ -95,6 +95,22 @@ export default function YouScreen() {
         </View>
         <Button label={saved ? "Saved ✓" : "Save profile"} loading={saving} onPress={save} />
       </Card>
+
+      <Pressable onPress={() => router.push("/pipeline")}>
+        <Card style={{ marginBottom: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <View style={{ flexShrink: 1, paddingRight: 10 }}>
+            <Sans size={13} weight="medium">
+              Your pipeline
+            </Sans>
+            <Eyebrow style={{ marginTop: 3, textTransform: "none", letterSpacing: 0 }}>
+              Track every role from applied to hired
+            </Eyebrow>
+          </View>
+          <Sans size={18} color={t.muted}>
+            ›
+          </Sans>
+        </Card>
+      </Pressable>
 
       <Card style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <View style={{ flexShrink: 1, paddingRight: 10 }}>

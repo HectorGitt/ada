@@ -67,6 +67,22 @@ export interface ChatMessage {
   content: string;
 }
 
+export type OutcomeStage = "applied" | "interviewing" | "offer" | "hired" | "rejected";
+
+export interface Outcome {
+  id: string;
+  company: string;
+  role_title: string;
+  stage: OutcomeStage;
+  source: string;
+  updated_at: string;
+}
+
+export interface Pipeline {
+  outcomes: Outcome[];
+  funnel: Record<string, number>;
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -135,6 +151,19 @@ export const api = {
   getProfile: () => request<Profile | null>("/api/profile"),
   putProfile: (body: { profile_text: string; linkedin_url?: string | null }) =>
     request<Profile>("/api/profile", { method: "PUT", body: JSON.stringify(body) }),
+
+  // outcomes (hiring funnel)
+  getPipeline: () => request<Pipeline>("/api/outcomes"),
+  addOutcome: (company: string, role_title: string, stage: OutcomeStage) =>
+    request<Outcome>("/api/outcomes", {
+      method: "POST",
+      body: JSON.stringify({ company, role_title, stage }),
+    }),
+  advanceOutcome: (id: string, stage: OutcomeStage) =>
+    request<Outcome>(`/api/outcomes/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ stage }),
+    }),
 };
 
 /** Stream a chat completion. React Native's fetch has no ReadableStream, so

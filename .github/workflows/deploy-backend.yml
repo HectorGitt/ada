@@ -35,9 +35,13 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v2
 
       - name: Build image
+        # --gcs-log-dir: the default Cloud Build logs bucket is only readable by
+        # project Viewers, so gcloud would exit non-zero after an otherwise
+        # successful build. Logs go to the staging bucket the deployer can read.
         run: |
           gcloud builds submit backend \
             --tag "$IMAGE:$GITHUB_SHA" \
+            --gcs-log-dir "gs://${PROJECT}_cloudbuild/ci-logs" \
             --project "$PROJECT" \
             --quiet
 
