@@ -74,6 +74,13 @@ def _store(user_id: str, filename: str, data: bytes, content_type: str | None) -
     return f"gs://{bucket_name}/{blob_name}"
 
 
+async def extract_cv_text(filename: str, data: bytes) -> str:
+    """Extract text from an uploaded CV without archiving it — for the public,
+    unauthenticated assessment, where there's no user to own a stored document.
+    Raises UnsupportedDocument on bad input."""
+    return await asyncio.to_thread(_extract, filename, data)
+
+
 async def process_cv_upload(
     user_id: str, filename: str, data: bytes, content_type: str | None
 ) -> tuple[str, str | None]:

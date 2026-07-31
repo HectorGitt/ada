@@ -17,6 +17,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState } from "react";
 
+import { AppNavSheet } from "@/components/app/nav-sheet";
 import { NotificationBell } from "@/components/notification-bell";
 import { Logo, Spinner, ThemeToggle } from "@/components/ui";
 import { api, type MeOut } from "@/lib/api";
@@ -181,9 +182,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Mobile: slim top bar + floating liquid-glass tab bar (from the
             mobile design canvas: blurred pill, raised accent FAB for New run) */}
         <header className="fixed inset-x-0 top-0 z-20 flex items-center justify-between border-b border-line bg-surface/90 px-4 py-3 backdrop-blur lg:hidden">
-          <Link href="/">
-            <Logo />
-          </Link>
+          <div className="flex items-center gap-1">
+            <AppNavSheet groups={NAV_GROUPS} pathname={pathname} email={user.email} />
+            <Link href="/">
+              <Logo />
+            </Link>
+          </div>
           <div className="flex items-center gap-1.5">
             <NotificationBell />
             <ThemeToggle />

@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_env: Literal["local", "staging", "prod"] = "local"
+    # Kill-switch for end-to-end testing: when false, POST /runs skips checkout
+    # entirely and every run is marked PAID and dispatched immediately (the
+    # same path a subscriber's included run takes). Webhooks stay mounted but
+    # become no-ops for these runs. Set PAYMENTS_ENABLED=true before launch.
+    payments_enabled: bool = True
     log_level: str = "INFO"
     # Comma-separated allowlist in staging/prod (e.g. "https://ada.africa,https://www.ada.africa").
     allowed_origin: str = "*"
@@ -125,11 +130,13 @@ class Settings(BaseSettings):
         missing: list[str] = []
         if not self.gcp_project:
             missing.append("GCP_PROJECT")
-        # At least one payment provider must be fully configured to take money.
-        paystack_ok = bool(self.paystack_secret_key and self.paystack_public_key)
-        stripe_ok = bool(self.stripe_secret_key and self.stripe_webhook_secret)
-        if not (paystack_ok or stripe_ok):
-            missing.append("a fully-configured payment provider (Paystack or Stripe)")
+        # At least one payment provider must be fully configured to take money —
+        # unless payments are switched off for end-to-end testing.
+        if self.payments_enabled:
+            paystack_ok = bool(self.paystack_secret_key and self.paystack_public_key)
+            stripe_ok = bool(self.stripe_secret_key and self.stripe_webhook_secret)
+            if not (paystack_ok or stripe_ok):
+                missing.append("a fully-configured payment provider (Paystack or Stripe)")
         if self.allowed_origin == "*":
             missing.append("ALLOWED_ORIGIN (wildcard CORS is not allowed in prod)")
         if not self.resend_api_key:

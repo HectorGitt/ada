@@ -7,13 +7,16 @@ a shared store (Redis) or an API-gateway rate limit.
 """
 import time
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from ada.config import get_settings
 from ada.services.assess import assess_cv
+from ada.services.documents import UnsupportedDocument, extract_cv_text
 
 router = APIRouter(tags=["assess"])
+
+_MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB, matching the authenticated CV upload
 
 _hits: dict[str, list[float]] = {}
 
@@ -39,6 +42,25 @@ def _rate_limited(ip: str, *, limit: int, window: int) -> bool:
 class AssessIn(BaseModel):
     cv_text: str = Field(min_length=100, max_length=20_000)
     target_role: str | None = Field(default=None, max_length=160)
+
+
+@router.post("/assess/extract")
+async def extract(request: Request, file: UploadFile = File(...)) -> dict:
+    """Pull the text out of an uploaded CV (PDF/DOCX/TXT) so a visitor can upload instead
+    of paste. Public and unauthenticated — nothing is stored; the text is returned for the
+    assessment. Rate-limited on its own bucket, size-capped to keep parsing cheap."""
+    s = get_settings()
+    if _rate_limited(f"extract:{_client_ip(request)}", limit=s.assess_rate_limit,
+                     window=s.assess_rate_window_seconds):
+        raise HTTPException(429, "Too many uploads for now — paste your CV or try again later.")
+    data = await file.read()
+    if len(data) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "That file is too large (5 MB max).")
+    try:
+        text = await extract_cv_text(file.filename or "cv", data)
+    except UnsupportedDocument as exc:
+        raise HTTPException(415, str(exc)) from exc
+    return {"cv_text": text}
 
 
 @router.post("/assess")

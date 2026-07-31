@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowRight, Check, Loader2, Share2, Sparkles } from "lucide-react";
+import { ArrowRight, Check, Loader2, Share2, Sparkles, Upload } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { Button, Card, Input, Label, Logo, ScoreRing, Textarea, ThemeToggle } from "@/components/ui";
 import { ApiError, api, type CvAssessment } from "@/lib/api";
@@ -15,6 +15,27 @@ export default function AssessPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [shared, setShared] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [fileName, setFileName] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  // Upload a CV file → extract its text into the box (nothing is stored).
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError("");
+    try {
+      const { cv_text } = await api.extractCv(file);
+      setCv(cv_text);
+      setFileName(file.name);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't read that file — try a PDF or DOCX.");
+    } finally {
+      setUploading(false);
+      if (fileInput.current) fileInput.current.value = ""; // allow re-selecting the same file
+    }
+  };
 
   const run = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,13 +111,38 @@ export default function AssessPage() {
                 />
               </div>
               <div>
-                <Label htmlFor="cv">Your CV</Label>
+                <div className="mb-1.5 flex items-center justify-between gap-3">
+                  <label htmlFor="cv" className="block text-[13px] font-medium text-ink">
+                    Your CV
+                  </label>
+                  <input
+                    ref={fileInput}
+                    type="file"
+                    accept=".pdf,.docx,.txt"
+                    onChange={onFile}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInput.current?.click()}
+                    disabled={uploading}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-ink/30 hover:text-ink disabled:opacity-60"
+                  >
+                    {uploading ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
+                    {uploading ? "Reading…" : fileName ? "Replace file" : "Upload PDF / DOCX"}
+                  </button>
+                </div>
+                {fileName && (
+                  <p className="mb-1.5 flex items-center gap-1.5 text-xs text-success">
+                    <Check className="size-3.5" /> {fileName} — text pulled in below, edit if needed.
+                  </p>
+                )}
                 <Textarea
                   id="cv"
                   rows={12}
                   required
                   minLength={100}
-                  placeholder="Paste the whole thing — experience, education, the lot."
+                  placeholder="Paste the whole thing — or upload a file above. Experience, education, the lot."
                   value={cv}
                   onChange={(e) => setCv(e.target.value)}
                 />

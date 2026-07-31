@@ -398,6 +398,26 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ cv_text, target_role }),
     }),
+  // Extract text from an uploaded CV (PDF/DOCX/TXT) — no auth, nothing stored.
+  extractCv: async (file: File): Promise<{ cv_text: string }> => {
+    const body = new FormData();
+    body.append("file", file);
+    const res = await fetch("/api/assess/extract", {
+      method: "POST",
+      credentials: "same-origin",
+      body,
+    });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        detail = ((await res.json()) as { detail?: string }).detail ?? detail;
+      } catch {
+        /* non-JSON error body */
+      }
+      throw new ApiError(res.status, detail);
+    }
+    return res.json() as Promise<{ cv_text: string }>;
+  },
 
   // verification credential (proctored assessment + identity attestation)
   myCredential: () => request<Credential>("/api/assessment"),

@@ -92,6 +92,21 @@ async def create_run(
     currency = s.currency if body.provider == "paystack" else "USD"
     runs = RunRepository(session)
 
+    # Payments kill-switch (e2e testing): treat every run as covered — no
+    # checkout, straight to PAID and execution. Same contract as entitled runs,
+    # so the frontend needs no special handling.
+    if not s.payments_enabled:
+        run = await create_pending_run(
+            session_runs=runs, provider=body.provider, amount=0, currency=currency,
+            email=body.email, target_role=body.target_role, cv_text=body.cv_text,
+            transcript=body.transcript, user_id=user.id if user else None,
+        )
+        await runs.set_status(run, RunStatus.PAID)
+        background.add_task(execute_run, run.id)
+        return CreateRunOut(
+            run_id=run.id, reference=run.reference, provider=body.provider, entitled=True
+        )
+
     # A subscriber's plan covers the run: skip payment, mark PAID, dispatch now.
     if user is not None:
         subscription = await SubscriptionRepository(session).get(user.id)
