@@ -53,7 +53,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     label: "Coach",
     items: [
       { href: "/app/coach", label: "Ask Ada", icon: MessageCircle },
-      { href: "/app/voice", label: "Voice intake", icon: Mic },
+      { href: "/app/voice", label: "Talk to Ada", icon: Mic },
     ],
   },
   {

@@ -39,7 +39,7 @@ function firstName(email: string): string {
 
 const QUICK_LINKS = [
   { href: "/app/new", icon: Plus, title: "Start a new run", body: "CV rewrite, matches, interview prep" },
-  { href: "/app/voice", icon: Mic, title: "Talk to Ada", body: "Voice intake drafts the run for you" },
+  { href: "/app/voice", icon: Mic, title: "Talk to Ada", body: "A quick conversation drafts the run for you" },
   { href: "/app/documents", icon: FileText, title: "Your documents", body: "Every CV Ada has written for you" },
 ];
 

@@ -70,6 +70,8 @@ class Settings(BaseSettings):
     verify_max_attempts: int = 3                 # per skill within the window below
     verify_attempt_window_seconds: int = 86_400  # rolling 24h attempt cap
     verify_retake_cooldown_seconds: int = 1800   # min gap between finished attempts
+    # Voice+camera sessions: face out of frame beyond this (seconds) flags for review.
+    verify_face_absent_limit_seconds: int = 25
 
     # matching + interview
     jobs_match_k: int = 5
@@ -82,6 +84,14 @@ class Settings(BaseSettings):
     resend_api_key: str = Field(default="", repr=False)
     email_from: str = "Ada <auth@ada.local>"
     session_cookie: str = "ada_session"
+    # Sliding session window: a session (and its cookie) lasts this long, refreshed on
+    # activity — so an active user stays in, but an idle one is signed out after this many
+    # idle days. Not a fixed-forever cookie.
+    session_ttl_days: int = 14
+
+    # Admin dashboard — comma-separated emails granted admin. Set via env/secrets only;
+    # admin is never assignable from inside the app. Empty ⇒ no admins.
+    admin_emails: str = ""
 
     # WhatsApp notifications via Twilio (best-effort; unset = channel skipped, logged).
     twilio_account_sid: str = Field(default="", repr=False)
@@ -97,6 +107,13 @@ class Settings(BaseSettings):
     vapid_public_key: str = ""
     vapid_private_key: str = Field(default="", repr=False)
     vapid_subject: str = "mailto:ops@ada.dev"  # RFC 8292 contact for the push service
+
+    # Smile Identity KYC (real ID verification). Unset ⇒ identity falls back to
+    # self-attestation. Sandbox base URL: https://testapi.smileidentity.com
+    smile_partner_id: str = ""
+    smile_api_key: str = Field(default="", repr=False)
+    smile_base_url: str = ""  # e.g. https://api.smileidentity.com (prod) / testapi... (sandbox)
+    smile_default_country: str = "NG"
 
     frontend_base_url: str = "http://localhost:3000"  # for links inside notifications
 
@@ -122,6 +139,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.allowed_origin.split(",") if o.strip()]
+
+    @property
+    def admin_email_set(self) -> set[str]:
+        return {e.strip().lower() for e in self.admin_emails.split(",") if e.strip()}
 
     def validate_runtime(self) -> None:
         """Raise on boot if a required secret is missing outside local dev."""

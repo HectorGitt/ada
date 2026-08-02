@@ -374,3 +374,65 @@ class Assessment(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AdminAudit(Base):
+    """Trail of privileged admin actions — impersonation, subscription grants, deletions —
+    for accountability. target_user_id is a plain string (not an FK) so the record survives
+    the deletion it records."""
+    __tablename__ = "admin_audit_log"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    admin_email: Mapped[str] = mapped_column(String(320), index=True)
+    action: Mapped[str] = mapped_column(String(48), index=True)
+    target_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    detail: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CompanyProfile(Base):
+    """An employer's identity — what candidates see when a company reaches out, and the
+    public company page. One per employer user. Separate from the User.company string so it
+    can hold the full profile (logo, about, the recruiter behind the intro)."""
+    __tablename__ = "company_profiles"
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    website: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    industry: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    size: Mapped[str | None] = mapped_column(String(40), nullable=True)  # e.g. "11–50"
+    location: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    about: Mapped[str | None] = mapped_column(Text, nullable=True)
+    logo_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    # The human reaching out (v1: one recruiter per company; team seats come later).
+    contact_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    contact_title: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ShortlistStage(StrEnum):
+    SHORTLISTED = "shortlisted"
+    CONTACTED = "contacted"
+    INTERVIEWING = "interviewing"
+    OFFER = "offer"
+    HIRED = "hired"
+    PASSED = "passed"
+
+
+class SavedCandidate(Base):
+    """An employer's talent pipeline — a candidate they've saved, moved through stages, and
+    kept notes on. One row per (employer, candidate)."""
+    __tablename__ = "saved_candidates"
+    __table_args__ = (UniqueConstraint("employer_id", "candidate_id", name="uq_saved_candidate"),)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    employer_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    candidate_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    job_id: Mapped[int | None] = mapped_column(ForeignKey("jobs.id"), nullable=True)
+    stage: Mapped[ShortlistStage] = mapped_column(
+        String(16), default=ShortlistStage.SHORTLISTED, index=True
+    )
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

@@ -11,10 +11,14 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ada.config import get_settings
 from ada.db.models import AuthToken, Session, User
 
 RESET_TOKEN_TTL = timedelta(minutes=30)
-SESSION_TTL = timedelta(days=30)
+
+
+def _session_ttl() -> timedelta:
+    return timedelta(days=get_settings().session_ttl_days)
 
 
 def _now() -> datetime:
@@ -86,17 +90,31 @@ class AuthRepository:
 
     async def create_session(self, user_id: str, token_hash: str) -> None:
         self._s.add(
-            Session(user_id=user_id, token_hash=token_hash, expires_at=_now() + SESSION_TTL)
+            Session(user_id=user_id, token_hash=token_hash, expires_at=_now() + _session_ttl())
         )
         await self._s.commit()
 
     async def user_for_session(self, token_hash: str) -> User | None:
+        """Resolve a live session to its user, sliding its expiry when it's past the
+        halfway mark — so an active user never gets logged out, but an idle one lapses
+        after the TTL. The write is bounded (only past halfway), not once per request."""
         stmt = (
-            select(User)
+            select(User, Session)
             .join(Session, Session.user_id == User.id)
             .where(Session.token_hash == token_hash, Session.expires_at > _now())
         )
-        user = (await self._s.execute(stmt)).scalar_one_or_none()
+        row = (await self._s.execute(stmt)).first()
+        if row is None:
+            return None
+        user, sess = row
+        ttl = _session_ttl()
+        if sess.expires_at < _now() + ttl / 2:
+            await self._s.execute(
+                update(Session)
+                .where(Session.token_hash == token_hash)
+                .values(expires_at=_now() + ttl)
+            )
+            await self._s.commit()
         return user
 
     async def destroy_session(self, token_hash: str) -> None:

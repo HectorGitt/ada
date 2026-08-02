@@ -1,4 +1,4 @@
-/** Microphone capture for voice intake: mic -> 16 kHz mono PCM16 -> base64 frames.
+/** Microphone capture for talking to Ada: mic -> 16 kHz mono PCM16 -> base64 frames.
  *
  * Uses an inline AudioWorklet (blob URL) so no separate static file is needed.
  * The worklet forwards Float32 blocks; downsampling to 16 kHz and PCM16

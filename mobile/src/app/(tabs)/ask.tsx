@@ -214,7 +214,7 @@ export default function AskScreen() {
           />
           <Pressable
             onPress={() => router.push("/voice")}
-            accessibilityLabel="Voice intake"
+            accessibilityLabel="Talk to Ada"
             style={{ width: 32, height: 32, alignItems: "center", justifyContent: "center" }}
           >
             <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={t.muted} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">

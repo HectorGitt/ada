@@ -193,6 +193,58 @@ export interface CandidateIntro {
   remote: boolean;
 }
 
+// ── employer console ──
+export interface CompanyProfile {
+  name: string;
+  website: string | null;
+  industry: string | null;
+  size: string | null;
+  location: string | null;
+  about: string | null;
+  logo_url: string | null;
+  contact_name: string | null;
+  contact_title: string | null;
+}
+
+export interface EmployerOverview {
+  roles: number;
+  intros_sent: number;
+  intros_accepted: number;
+  shortlist_total: number;
+  shortlist_funnel: Record<string, number>;
+  hires: number;
+  tier: string;
+}
+
+export type ShortlistStage =
+  | "shortlisted" | "contacted" | "interviewing" | "offer" | "hired" | "passed";
+
+export interface TalentCard {
+  user_id: string;
+  headline: string | null;
+  location: string | null;
+  seniority: string | null;
+  years_experience: number | null;
+  top_skills: string[];
+  compensation: string | null;
+  work_pref: string | null;
+  identity_verified: boolean;
+  saved?: boolean;
+  stage?: ShortlistStage;
+  note?: string | null;
+}
+
+export interface PublicCompany {
+  name: string;
+  website: string | null;
+  industry: string | null;
+  size: string | null;
+  location: string | null;
+  about: string | null;
+  logo_url: string | null;
+  roles: { id: number; title: string; location: string; remote: boolean }[];
+}
+
 export interface CvFix {
   title: string;
   detail: string;
@@ -238,6 +290,9 @@ export interface AssessmentIntegrity {
   tab_switches: number;
   blur_seconds: number;
   paste_events: number;
+  mode?: "written" | "voice_video";
+  camera_present?: boolean;
+  face_absent_seconds?: number;
 }
 
 export interface AppNotification {
@@ -312,6 +367,73 @@ export interface Pipeline {
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+}
+
+// ── admin dashboard types ──
+export interface AdminOverview {
+  users_total: number;
+  users_by_type: Record<string, number>;
+  runs_total: number;
+  runs_by_status: Record<string, number>;
+  subscriptions_active: number;
+  subscriptions_by_tier: Record<string, number>;
+  jobs_total: number;
+  jobs_embedded: number;
+  applications_total: number;
+  applications_submitted: number;
+  intros_total: number;
+  intros_accepted: number;
+  identity_verified: number;
+  assessments_verified: number;
+  revenue: { currency: string; amount_minor: number; runs: number }[];
+}
+
+export interface AdminUserRow {
+  id: string;
+  email: string;
+  account_type: string;
+  company: string | null;
+  created_at: string;
+  subscription: { tier: string | null; status: string | null } | null;
+}
+
+export interface AdminUserDetail extends AdminUserRow {
+  is_admin: boolean;
+  entitlement: { tier: string; included_runs: boolean; can_apply: boolean; can_voice: boolean };
+  profile: {
+    full_name: string | null;
+    phone: string | null;
+    headline: string | null;
+    identity_verified: boolean;
+    discoverable: boolean;
+  } | null;
+  credential: { skill: string; score: number | null; verdict: string | null } | null;
+  counts: { runs: number; applications: number };
+}
+
+export interface AdminRun {
+  id: string;
+  user_id: string | null;
+  target_role: string;
+  status: string;
+  amount: number;
+  currency: string;
+  created_at: string;
+}
+
+export interface AdminEvent {
+  id: number;
+  provider: string;
+  reference: string;
+}
+
+export interface AdminAudit {
+  id: number;
+  admin_email: string;
+  action: string;
+  target_user_id: string | null;
+  detail: Record<string, unknown> | null;
+  created_at: string;
 }
 
 export interface JobPeek {
@@ -421,6 +543,8 @@ export const api = {
 
   // verification credential (proctored assessment + identity attestation)
   myCredential: () => request<Credential>("/api/assessment"),
+  activeAssessment: () =>
+    request<{ active: AssessmentTask | null }>("/api/assessment/active"),
   startAssessment: (skill: string) =>
     request<AssessmentTask>("/api/assessment/start", {
       method: "POST",
@@ -430,15 +554,23 @@ export const api = {
     assessment_id: string,
     answers: string[],
     integrity: AssessmentIntegrity,
+    snapshots: string[] = [],
   ) =>
     request<AssessmentResult>("/api/assessment/submit", {
       method: "POST",
-      body: JSON.stringify({ assessment_id, answers, integrity }),
+      body: JSON.stringify({ assessment_id, answers, integrity, snapshots }),
     }),
   attestIdentity: () =>
     request<{ identity_verified: boolean; method: string }>(
       "/api/candidate/identity/attest",
       { method: "POST" },
+    ),
+  identityMethods: () =>
+    request<{ kyc_enabled: boolean; id_types: string[] }>("/api/candidate/identity/methods"),
+  verifyIdentity: (id_type: string, id_number: string, dob: string | null) =>
+    request<{ identity_verified: boolean; method: string }>(
+      "/api/candidate/identity/verify",
+      { method: "POST", body: JSON.stringify({ id_type, id_number, dob }) },
     ),
 
   // intros an employer sent the candidate — the candidate side of the loop
@@ -469,6 +601,45 @@ export const api = {
   employerIntros: () => request<EmployerIntro[]>("/api/employer/intros"),
   employerPlans: () => request<Plan[]>("/api/employer/plans"),
   employerPlan: () => request<EmployerPlan>("/api/employer/plan"),
+
+  // employer console
+  employerOverview: () => request<EmployerOverview>("/api/employer/overview"),
+  getCompany: () => request<CompanyProfile | null>("/api/employer/company"),
+  putCompany: (body: CompanyProfile) =>
+    request<CompanyProfile>("/api/employer/company", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  publicCompany: (id: string) => request<PublicCompany>(`/api/company/${id}`),
+  searchTalent: (params: {
+    q?: string;
+    location?: string;
+    seniority?: string;
+    verified?: boolean;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set("q", params.q);
+    if (params.location) qs.set("location", params.location);
+    if (params.seniority) qs.set("seniority", params.seniority);
+    if (params.verified) qs.set("verified", "true");
+    return request<{ candidates: TalentCard[] }>(`/api/employer/candidates?${qs}`);
+  },
+  saveToShortlist: (candidate_id: string, job_id: number | null, note: string | null) =>
+    request<{ ok: boolean; stage: string }>("/api/employer/shortlist", {
+      method: "POST",
+      body: JSON.stringify({ candidate_id, job_id, note }),
+    }),
+  getShortlist: () =>
+    request<{ funnel: Record<string, number>; candidates: TalentCard[] }>(
+      "/api/employer/shortlist",
+    ),
+  updateShortlist: (candidate_id: string, stage: ShortlistStage | null, note: string | null) =>
+    request<{ ok: boolean }>(`/api/employer/shortlist/${candidate_id}`, {
+      method: "PUT",
+      body: JSON.stringify({ stage, note }),
+    }),
+  removeFromShortlist: (candidate_id: string) =>
+    request<{ ok: boolean }>(`/api/employer/shortlist/${candidate_id}`, { method: "DELETE" }),
 
   // notifications (in-app centre; email + WhatsApp fan out server-side)
   notifications: () => request<NotificationsOut>("/api/notifications"),
@@ -610,6 +781,48 @@ export const api = {
   getProfile: () => request<Profile | null>("/api/profile"),
   putProfile: (body: { profile_text: string; linkedin_url?: string | null }) =>
     request<Profile>("/api/profile", { method: "PUT", body: JSON.stringify(body) }),
+
+  // ── admin dashboard (gated server-side by the ADMIN_EMAILS allowlist) ──
+  admin: {
+    me: () => request<{ email: string; admin: boolean }>("/api/admin/me"),
+    overview: () => request<AdminOverview>("/api/admin/overview"),
+    users: (q: string, limit = 50, offset = 0) =>
+      request<AdminUserRow[]>(
+        `/api/admin/users?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`,
+      ),
+    user: (id: string) => request<AdminUserDetail>(`/api/admin/users/${id}`),
+    setAccountType: (id: string, account_type: "candidate" | "employer") =>
+      request<{ ok: boolean }>(`/api/admin/users/${id}/account-type`, {
+        method: "PUT",
+        body: JSON.stringify({ account_type }),
+      }),
+    grant: (id: string, tier: string, cadence: string, days: number) =>
+      request<{ ok: boolean; tier: string; until: string }>(`/api/admin/users/${id}/subscription`, {
+        method: "POST",
+        body: JSON.stringify({ tier, cadence, days }),
+      }),
+    revoke: (id: string) =>
+      request<{ ok: boolean }>(`/api/admin/users/${id}/subscription`, { method: "DELETE" }),
+    deleteUser: (id: string) =>
+      request<{ ok: boolean }>(`/api/admin/users/${id}`, { method: "DELETE" }),
+    impersonate: (id: string) =>
+      request<{ ok: boolean; impersonating: string }>(`/api/admin/users/${id}/impersonate`, {
+        method: "POST",
+      }),
+    runs: (status: string, limit = 50) =>
+      request<AdminRun[]>(`/api/admin/runs?status=${status}&limit=${limit}`),
+    redispatch: (id: string) =>
+      request<{ ok: boolean }>(`/api/admin/runs/${id}/redispatch`, { method: "POST" }),
+    events: (limit = 100) => request<AdminEvent[]>(`/api/admin/events?limit=${limit}`),
+    ingest: () => request<{ ok: boolean; message: string }>("/api/admin/jobs/ingest", { method: "POST" }),
+    embed: () => request<{ ok: boolean; message: string }>("/api/admin/jobs/embed", { method: "POST" }),
+    broadcast: (title: string, body: string, link: string | null, account_type: string | null) =>
+      request<{ ok: boolean; recipients: number }>("/api/admin/broadcast", {
+        method: "POST",
+        body: JSON.stringify({ title, body, link, account_type }),
+      }),
+    audit: (limit = 100) => request<AdminAudit[]>(`/api/admin/audit?limit=${limit}`),
+  },
 };
 
 /** Stream a chat completion; calls onDelta per text chunk. Returns the full reply. */
@@ -651,7 +864,7 @@ export async function streamChat(
   return full;
 }
 
-/** Backend WebSocket base for the voice intake (rewrites don't proxy upgrades). */
+/** Backend WebSocket base for talking to Ada (rewrites don't proxy upgrades). */
 export function voiceWsUrl(mode?: "conversation" | "interview"): string {
   const base =
     process.env.NEXT_PUBLIC_WS_URL ??

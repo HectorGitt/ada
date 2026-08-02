@@ -6,11 +6,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ada.api.routes import (
     account,
+    admin,
     applications,
     assess,
     auth,
     candidate,
     chat,
+    company,
     documents,
     employer,
     health,
@@ -64,11 +66,13 @@ def create_app() -> FastAPI:
     app.include_router(notifications.router, prefix="/api")
     app.include_router(push.router, prefix="/api")
     app.include_router(chat.router, prefix="/api")
+    app.include_router(company.router, prefix="/api")
     app.include_router(jobs.router, prefix="/api")
     app.include_router(applications.router, prefix="/api")
     app.include_router(outcomes.router, prefix="/api")
     app.include_router(subscriptions.router, prefix="/api")
     app.include_router(account.router, prefix="/api")
+    app.include_router(admin.router, prefix="/api")
     app.include_router(candidate.router, prefix="/api")
     app.include_router(employer.router, prefix="/api")
     app.include_router(runs.router, prefix="/api")

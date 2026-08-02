@@ -9,6 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ada.auth.cookies import set_session_cookie
 from ada.auth.dependencies import current_user
 from ada.auth.mailer import send_reset_link
 from ada.auth.passwords import hash_password, verify_password
@@ -46,16 +47,7 @@ class ResetIn(BaseModel):
 
 
 def _set_session_cookie(resp: Response, raw: str) -> None:
-    s = get_settings()
-    resp.set_cookie(
-        key=s.session_cookie,
-        value=raw,
-        httponly=True,
-        secure=s.app_env != "local",
-        samesite="lax",
-        max_age=30 * 24 * 3600,
-        path="/",
-    )
+    set_session_cookie(resp, raw)
 
 
 async def _start_session(repo: AuthRepository, user_id: str, resp: Response) -> None:

@@ -109,3 +109,12 @@ async def run(limit: int | None = None) -> dict[str, int]:
     stats = {"fetched": len(listings), "upserted": upserted, "embedded": embedded, "total": total}
     log.info("ingest_complete", **stats)
     return stats
+
+
+async def backfill_embeddings() -> int:
+    """Embed listings that are still missing a vector (fetching is free; embedding needs
+    billing, so this is a separate lever the admin can pull). Returns how many embedded."""
+    async with _session_factory() as session:
+        embedded = await _backfill_embeddings(JobRepository(session))
+    log.info("embed_backfill_complete", embedded=embedded)
+    return embedded

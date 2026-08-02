@@ -279,7 +279,7 @@ export default function CoachPage() {
           />
           <Link
             href="/app/voice"
-            aria-label="Switch to voice intake"
+            aria-label="Switch to talking with Ada"
             className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-line/40 hover:text-ink"
           >
             <Mic className="size-4" />

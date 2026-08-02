@@ -153,15 +153,58 @@ class VerificationService:
 
 
 def integrity_ok(integrity: dict[str, Any]) -> bool:
-    """Proctoring gate: any paste, excessive tab-switching/blur, or blowing the
-    server-enforced time limit means the result can't be trusted at face value
+    """Proctoring gate: any paste, excessive tab-switching/blur, blowing the
+    server-enforced time limit, or (for voice+camera sessions) the camera being off or
+    the face out of frame too long means the result can't be trusted at face value
     (→ NEEDS_REVIEW), however high the score."""
     if integrity.get("over_time"):
         return False
     paste = int(integrity.get("paste_events", 0) or 0)
     tab_switches = int(integrity.get("tab_switches", 0) or 0)
     blur_seconds = float(integrity.get("blur_seconds", 0) or 0)
-    return paste == 0 and tab_switches <= 2 and blur_seconds < 20
+    if paste != 0 or tab_switches > 2 or blur_seconds >= 20:
+        return False
+    if integrity.get("mode") == "voice_video":
+        if not integrity.get("camera_present", False):
+            return False
+        limit = get_settings().verify_face_absent_limit_seconds
+        if float(integrity.get("face_absent_seconds", 0) or 0) >= limit:
+            return False
+    return True
+
+
+async def store_proctor_snapshots(
+    user_id: str, assessment_id: str, snapshots: list[str]
+) -> list[str]:
+    """Persist a few liveness frames as proctoring evidence. Best-effort and GCS-gated:
+    no bucket (or any failure) ⇒ returns [] and the frame count still stands as evidence.
+    Each frame is a data URL; oversized or unparseable frames are skipped."""
+    import base64
+    import binascii
+
+    bucket_name = get_settings().gcs_bucket
+    if not bucket_name or not snapshots:
+        return []
+    stored: list[str] = []
+    try:
+        from google.cloud import storage
+
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        for i, frame in enumerate(snapshots[:8]):
+            payload = frame.split(",", 1)[-1]  # strip the "data:image/jpeg;base64," prefix
+            try:
+                data = base64.b64decode(payload, validate=True)
+            except (binascii.Error, ValueError):
+                continue
+            if not data or len(data) > 800_000:  # ~0.8 MB per frame ceiling
+                continue
+            blob = bucket.blob(f"proctor/{user_id}/{assessment_id}/{i}.jpg")
+            blob.upload_from_string(data, content_type="image/jpeg")
+            stored.append(f"gs://{bucket_name}/proctor/{user_id}/{assessment_id}/{i}.jpg")
+    except Exception as exc:  # noqa: BLE001 — evidence is best-effort, never blocks scoring
+        log.warning("proctor_snapshot_store_failed", user_id=user_id, error=str(exc))
+    return stored
 
 
 def _heuristic(answer: str) -> int:

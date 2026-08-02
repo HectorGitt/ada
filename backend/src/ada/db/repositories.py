@@ -16,12 +16,14 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ada.db.models import (
+    AdminAudit,
     Application,
     ApplicationStatus,
     Assessment,
     AssessmentStatus,
     AssessmentVerdict,
     ChatTurn,
+    CompanyProfile,
     Intro,
     IntroStatus,
     Job,
@@ -34,6 +36,8 @@ from ada.db.models import (
     PushSubscription,
     Run,
     RunStatus,
+    SavedCandidate,
+    ShortlistStage,
     Subscription,
     SubscriptionStatus,
     UploadedDocument,
@@ -293,6 +297,27 @@ class ProfileRepository:
             stmt = stmt.where(Profile.user_id != exclude)
         rows = (await self._s.execute(stmt)).all()
         return [(row[0], float(row[1])) for row in rows]
+
+    async def search_talent(
+        self, *, q: str | None, location: str | None, seniority: str | None,
+        verified_only: bool, exclude: str | None, limit: int,
+    ) -> list[Profile]:
+        """Filtered search over the discoverable pool — the employer's talent search. SQL
+        only (no embedding needed), so it works even when generation/embeddings are down."""
+        stmt = select(Profile).where(Profile.discoverable.is_(True))
+        if q:
+            like = f"%{q}%"
+            stmt = stmt.where(or_(Profile.headline.ilike(like), Profile.profile_text.ilike(like)))
+        if location:
+            stmt = stmt.where(Profile.location.ilike(f"%{location}%"))
+        if seniority:
+            stmt = stmt.where(Profile.insights["seniority"].astext == seniority)
+        if verified_only:
+            stmt = stmt.where(Profile.identity_verified.is_(True))
+        if exclude is not None:
+            stmt = stmt.where(Profile.user_id != exclude)
+        stmt = stmt.order_by(Profile.updated_at.desc()).limit(limit)
+        return list((await self._s.execute(stmt)).scalars().all())
 
 
 class JobRepository:
@@ -879,6 +904,17 @@ class AssessmentRepository:
         )
         return (await self._s.execute(stmt)).scalar_one_or_none()
 
+    async def active_for_user(self, user_id: str) -> Assessment | None:
+        """The candidate's most recent in-flight assessment, any skill — lets the client
+        resume after a refresh instead of losing the session."""
+        stmt = (
+            select(Assessment)
+            .where(Assessment.user_id == user_id, Assessment.status == AssessmentStatus.PENDING)
+            .order_by(Assessment.started_at.desc())
+            .limit(1)
+        )
+        return (await self._s.execute(stmt)).scalar_one_or_none()
+
     async def pending_for(self, user_id: str, skill: str) -> Assessment | None:
         """An in-flight (unsubmitted) assessment for this skill — resumed on re-start
         so a candidate can't farm fresh questions by hitting start repeatedly."""
@@ -1087,6 +1123,311 @@ class OutcomeRepository:
             select(Outcome.stage, func.count(Outcome.id))
             .where(Outcome.user_id == user_id)
             .group_by(Outcome.stage)
+        )
+        rows = (await self._s.execute(stmt)).all()
+        return {str(stage): count for stage, count in rows}
+
+
+class AdminRepository:
+    """Read-side aggregates, privileged mutations, and the audit trail for the admin
+    dashboard. Every mutating admin action is expected to also call record_audit."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def _scalar(self, stmt: Any) -> int:
+        return int((await self._s.execute(stmt)).scalar_one())
+
+    async def overview(self) -> dict[str, Any]:
+        """A snapshot of the whole marketplace for the dashboard's home."""
+        by_type = {
+            t: c
+            for t, c in (
+                await self._s.execute(
+                    select(User.account_type, func.count(User.id)).group_by(User.account_type)
+                )
+            ).all()
+        }
+        runs_by_status = {
+            str(st): c
+            for st, c in (
+                await self._s.execute(
+                    select(Run.status, func.count(Run.id)).group_by(Run.status)
+                )
+            ).all()
+        }
+        subs_by_tier = {
+            t: c
+            for t, c in (
+                await self._s.execute(
+                    select(Subscription.tier, func.count())
+                    .where(
+                        Subscription.status.in_(
+                            [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE]
+                        )
+                    )
+                    .group_by(Subscription.tier)
+                )
+            ).all()
+        }
+        paid = [RunStatus.PAID, RunStatus.RUNNING, RunStatus.COMPLETE]
+        revenue = [
+            {"currency": cur, "amount_minor": int(total or 0), "runs": cnt}
+            for cur, total, cnt in (
+                await self._s.execute(
+                    select(Run.currency, func.coalesce(func.sum(Run.amount), 0), func.count(Run.id))
+                    .where(Run.status.in_(paid))
+                    .group_by(Run.currency)
+                )
+            ).all()
+        ]
+        return {
+            "users_total": await self._scalar(select(func.count(User.id))),
+            "users_by_type": by_type,
+            "runs_total": await self._scalar(select(func.count(Run.id))),
+            "runs_by_status": runs_by_status,
+            "subscriptions_active": sum(subs_by_tier.values()),
+            "subscriptions_by_tier": subs_by_tier,
+            "jobs_total": await self._scalar(select(func.count(Job.id))),
+            "jobs_embedded": await self._scalar(
+                select(func.count(Job.id)).where(Job.embedding.isnot(None))
+            ),
+            "applications_total": await self._scalar(select(func.count(Application.id))),
+            "applications_submitted": await self._scalar(
+                select(func.count(Application.id)).where(
+                    Application.status == ApplicationStatus.SUBMITTED
+                )
+            ),
+            "intros_total": await self._scalar(select(func.count(Intro.id))),
+            "intros_accepted": await self._scalar(
+                select(func.count(Intro.id)).where(Intro.status == IntroStatus.ACCEPTED)
+            ),
+            "identity_verified": await self._scalar(
+                select(func.count()).select_from(Profile).where(Profile.identity_verified.is_(True))
+            ),
+            "assessments_verified": await self._scalar(
+                select(func.count(Assessment.id)).where(
+                    Assessment.verdict == AssessmentVerdict.VERIFIED
+                )
+            ),
+            "revenue": revenue,
+        }
+
+    async def list_users(
+        self, *, q: str | None, limit: int, offset: int
+    ) -> list[tuple[User, Subscription | None]]:
+        stmt = select(User, Subscription).join(
+            Subscription, Subscription.user_id == User.id, isouter=True
+        )
+        if q:
+            stmt = stmt.where(or_(User.email.ilike(f"%{q}%"), User.company.ilike(f"%{q}%")))
+        stmt = stmt.order_by(User.created_at.desc()).limit(limit).offset(offset)
+        rows = (await self._s.execute(stmt)).all()
+        return [(row[0], row[1]) for row in rows]
+
+    async def user_counts(self, user_id: str) -> dict[str, int]:
+        return {
+            "runs": await self._scalar(
+                select(func.count(Run.id)).where(Run.user_id == user_id)
+            ),
+            "applications": await self._scalar(
+                select(func.count(Application.id)).where(Application.user_id == user_id)
+            ),
+        }
+
+    async def list_runs(
+        self, *, status: str | None, limit: int, offset: int
+    ) -> list[Run]:
+        stmt = select(Run)
+        if status:
+            stmt = stmt.where(Run.status == status)
+        stmt = stmt.order_by(Run.created_at.desc()).limit(limit).offset(offset)
+        return list((await self._s.execute(stmt)).scalars().all())
+
+    async def list_events(self, *, limit: int) -> list[ProcessedEvent]:
+        stmt = select(ProcessedEvent).order_by(ProcessedEvent.id.desc()).limit(limit)
+        return list((await self._s.execute(stmt)).scalars().all())
+
+    async def all_user_ids(self, *, account_type: str | None) -> list[str]:
+        """User ids for a broadcast, optionally scoped to candidates/employers."""
+        stmt = select(User.id)
+        if account_type:
+            stmt = stmt.where(User.account_type == account_type)
+        return list((await self._s.execute(stmt)).scalars().all())
+
+    async def delete_user(self, user_id: str) -> None:
+        """Hard-delete a user and every row that references them, in FK-safe order.
+        Employer-posted jobs are kept (posted_by nulled), so the job pool is preserved."""
+        from ada.db.models import (
+            AuthToken,
+            ChatTurn,
+            Notification,
+            Outcome,
+            Session,
+            UploadedDocument,
+            UserMemory,
+        )
+
+        await self._s.execute(
+            update(Job).where(Job.posted_by == user_id).values(posted_by=None)
+        )
+        for model in (
+            Outcome, Application, Assessment, Notification, NotificationPref,
+            PushSubscription, UserMemory, ChatTurn, UploadedDocument, Profile,
+            Subscription, Run, AuthToken, Session,
+        ):
+            await self._s.execute(delete(model).where(model.user_id == user_id))
+        await self._s.execute(
+            delete(Intro).where(
+                or_(Intro.employer_id == user_id, Intro.candidate_id == user_id)
+            )
+        )
+        await self._s.execute(delete(User).where(User.id == user_id))
+        await self._s.commit()
+
+    async def record_audit(
+        self, *, admin_email: str, action: str,
+        target_user_id: str | None = None, detail: dict[str, Any] | None = None,
+    ) -> None:
+        self._s.add(
+            AdminAudit(
+                admin_email=admin_email, action=action,
+                target_user_id=target_user_id, detail=detail,
+            )
+        )
+        await self._s.commit()
+
+    async def list_audit(self, *, limit: int) -> list[AdminAudit]:
+        stmt = select(AdminAudit).order_by(AdminAudit.id.desc()).limit(limit)
+        return list((await self._s.execute(stmt)).scalars().all())
+
+    async def set_account_type(self, user_id: str, account_type: str) -> bool:
+        stmt = (
+            update(User)
+            .where(User.id == user_id)
+            .values(account_type=account_type)
+            .returning(User.id)
+        )
+        ok = (await self._s.execute(stmt)).scalar_one_or_none() is not None
+        await self._s.commit()
+        return ok
+
+    async def revoke_subscription(self, user_id: str) -> None:
+        """Drop a user back to free by cancelling their subscription row."""
+        await self._s.execute(
+            update(Subscription)
+            .where(Subscription.user_id == user_id)
+            .values(status=SubscriptionStatus.CANCELED)
+        )
+        await self._s.commit()
+
+
+class CompanyRepository:
+    """An employer's company profile — one per employer user. Also read publicly for the
+    company page and to enrich intros."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def get(self, user_id: str) -> CompanyProfile | None:
+        return await self._s.get(CompanyProfile, user_id)
+
+    async def upsert(self, user_id: str, values: dict[str, Any]) -> CompanyProfile:
+        stmt = insert(CompanyProfile).values(user_id=user_id, **values)
+        stmt = stmt.on_conflict_do_update(index_elements=["user_id"], set_=values)
+        await self._s.execute(stmt)
+        await self._s.commit()
+        existing = await self._s.get(CompanyProfile, user_id)
+        if existing is None:  # unreachable after an upsert; keeps the return type honest
+            raise RuntimeError("company profile missing after upsert")
+        return existing
+
+
+class ShortlistRepository:
+    """The employer's talent pipeline — saved candidates moving through stages."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def save(
+        self, *, entry_id: str, employer_id: str, candidate_id: str,
+        job_id: int | None, note: str | None,
+    ) -> SavedCandidate:
+        """Add a candidate to the pipeline, or return the existing entry (idempotent)."""
+        stmt = (
+            insert(SavedCandidate)
+            .values(
+                id=entry_id, employer_id=employer_id, candidate_id=candidate_id,
+                job_id=job_id, note=note, stage=ShortlistStage.SHORTLISTED,
+            )
+            .on_conflict_do_nothing(constraint="uq_saved_candidate")
+        )
+        await self._s.execute(stmt)
+        await self._s.commit()
+        existing = (
+            await self._s.execute(
+                select(SavedCandidate).where(
+                    SavedCandidate.employer_id == employer_id,
+                    SavedCandidate.candidate_id == candidate_id,
+                )
+            )
+        ).scalar_one()
+        return existing
+
+    async def list_for_employer(self, employer_id: str) -> list[tuple[SavedCandidate, Profile]]:
+        stmt = (
+            select(SavedCandidate, Profile)
+            .join(Profile, Profile.user_id == SavedCandidate.candidate_id)
+            .where(SavedCandidate.employer_id == employer_id)
+            .order_by(SavedCandidate.updated_at.desc())
+        )
+        rows = (await self._s.execute(stmt)).all()
+        return [(row[0], row[1]) for row in rows]
+
+    async def saved_candidate_ids(self, employer_id: str) -> set[str]:
+        stmt = select(SavedCandidate.candidate_id).where(
+            SavedCandidate.employer_id == employer_id
+        )
+        return set((await self._s.execute(stmt)).scalars().all())
+
+    async def update(
+        self, *, employer_id: str, candidate_id: str,
+        stage: ShortlistStage | None, note: str | None,
+    ) -> bool:
+        values: dict[str, Any] = {}
+        if stage is not None:
+            values["stage"] = stage
+        if note is not None:
+            values["note"] = note
+        if not values:
+            return False
+        stmt = (
+            update(SavedCandidate)
+            .where(
+                SavedCandidate.employer_id == employer_id,
+                SavedCandidate.candidate_id == candidate_id,
+            )
+            .values(**values)
+            .returning(SavedCandidate.id)
+        )
+        ok = (await self._s.execute(stmt)).scalar_one_or_none() is not None
+        await self._s.commit()
+        return ok
+
+    async def remove(self, *, employer_id: str, candidate_id: str) -> None:
+        await self._s.execute(
+            delete(SavedCandidate).where(
+                SavedCandidate.employer_id == employer_id,
+                SavedCandidate.candidate_id == candidate_id,
+            )
+        )
+        await self._s.commit()
+
+    async def funnel(self, employer_id: str) -> dict[str, int]:
+        stmt = (
+            select(SavedCandidate.stage, func.count(SavedCandidate.id))
+            .where(SavedCandidate.employer_id == employer_id)
+            .group_by(SavedCandidate.stage)
         )
         rows = (await self._s.execute(stmt)).all()
         return {str(stage): count for stage, count in rows}

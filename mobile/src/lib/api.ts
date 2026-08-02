@@ -213,7 +213,7 @@ export function streamChat(
   return { done, abort: () => xhr.abort() };
 }
 
-/** WebSocket base for the voice intake. */
+/** WebSocket base for talking to Ada. */
 export function voiceWsUrl(): string {
   return `${API_BASE.replace(/^http/, "ws")}/api/voice`;
 }

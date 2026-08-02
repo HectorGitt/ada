@@ -21,7 +21,7 @@ import { Button, Eyebrow, Logo, ThemeToggle } from "@/components/ui";
 const STEPS = [
   {
     title: "Tell Ada what you're going for",
-    body: "Paste your CV and name the role — any role, any industry. Or just talk to her: a few minutes of voice intake is enough.",
+    body: "Paste your CV and name the role — any role, any industry. Or just talk to her: a few minutes of conversation is enough.",
   },
   {
     title: "Pay once, Ada runs",
@@ -68,7 +68,7 @@ const FAQS = [
   },
   {
     q: "Can I talk to Ada instead of typing?",
-    a: "Yes. Voice intake is built in: Ada interviews you briefly, drafts your CV and target role from the conversation, and you review before paying.",
+    a: "Yes. Talking to Ada is built in: she chats with you briefly, drafts your CV and target role from the conversation, and you review before paying.",
   },
 ];
 

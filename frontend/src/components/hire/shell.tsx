@@ -1,6 +1,16 @@
 "use client";
 
-import { ArrowRight, Briefcase, CreditCard, Send, UserRound } from "lucide-react";
+import {
+  ArrowRight,
+  Briefcase,
+  Building2,
+  CreditCard,
+  LayoutDashboard,
+  ListChecks,
+  Search,
+  Send,
+  UserRound,
+} from "lucide-react";
 import { motion } from "motion/react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -21,8 +31,12 @@ export const useEmployer = () => {
 };
 
 const NAV = [
+  { href: "/hire/overview", label: "Overview", icon: LayoutDashboard, exact: true },
   { href: "/hire", label: "Roles", icon: Briefcase, exact: true },
+  { href: "/hire/talent", label: "Talent", icon: Search },
+  { href: "/hire/shortlist", label: "Pipeline", icon: ListChecks },
   { href: "/hire/intros", label: "Intros", icon: Send },
+  { href: "/hire/company", label: "Company", icon: Building2 },
   { href: "/hire/billing", label: "Billing", icon: CreditCard },
 ];
 

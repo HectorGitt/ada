@@ -117,6 +117,48 @@ async def test_session_round_trip_and_destroy():
 
 
 @_db
+async def test_session_slides_on_use_but_not_when_expired():
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import select, update
+
+    from ada.auth.repository import AuthRepository, _session_ttl
+    from ada.db.models import Session
+    from ada.db.session import _session_factory, init_db
+
+    await init_db()
+    email = f"{uuid.uuid4().hex}@example.com"
+    async with _session_factory() as s:
+        repo = AuthRepository(s)
+        user = await repo.create_user_with_password(email, hash_password("pw"))
+        assert user is not None
+        raw, token_hash = mint()
+        await repo.create_session(user.id, token_hash)
+
+        # Age it past the halfway mark → a use should slide the expiry back to ~full TTL.
+        await s.execute(
+            update(Session)
+            .where(Session.token_hash == token_hash)
+            .values(expires_at=datetime.now(UTC) + timedelta(minutes=1))
+        )
+        await s.commit()
+        assert await repo.user_for_session(token_hash) is not None
+        slid = (
+            await s.execute(select(Session).where(Session.token_hash == token_hash))
+        ).scalar_one()
+        assert slid.expires_at > datetime.now(UTC) + _session_ttl() / 2
+
+        # An already-expired session is never resurrected.
+        await s.execute(
+            update(Session)
+            .where(Session.token_hash == token_hash)
+            .values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
+        )
+        await s.commit()
+        assert await repo.user_for_session(token_hash) is None
+
+
+@_db
 async def test_reset_revokes_all_sessions():
     from ada.auth.repository import AuthRepository
     from ada.db.session import _session_factory, init_db

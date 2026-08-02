@@ -19,6 +19,17 @@ def test_integrity_gate():
     assert integrity_ok({**CLEAN, "over_time": True}) is False       # blew the clock
 
 
+def test_integrity_gate_camera_for_voice_video():
+    """Camera gates apply only to voice+camera sessions, not the written fallback."""
+    written = {**CLEAN, "mode": "written", "camera_present": False}
+    assert integrity_ok(written) is True  # written mode ignores the camera
+
+    live = {**CLEAN, "mode": "voice_video", "camera_present": True, "face_absent_seconds": 0}
+    assert integrity_ok(live) is True
+    assert integrity_ok({**live, "camera_present": False}) is False      # camera off
+    assert integrity_ok({**live, "face_absent_seconds": 60}) is False    # face out of frame
+
+
 def test_heuristic_rewards_substance():
     assert _heuristic("") == 20
     assert _heuristic("too short") == 20

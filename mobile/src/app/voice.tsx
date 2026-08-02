@@ -113,7 +113,7 @@ export default function VoiceScreen() {
             wsRef.current?.close();
             router.replace("/new");
           } else if (msg.type === "error") {
-            setError(msg.message ?? "Voice intake is unavailable right now.");
+            setError(msg.message ?? "Voice chat is unavailable right now.");
             setState("error");
           }
         } catch {
@@ -168,7 +168,7 @@ export default function VoiceScreen() {
             marginBottom: 10,
           }}
         >
-          Voice intake{state === "live" ? ` · ${clock}` : ""}
+          Talk to Ada{state === "live" ? ` · ${clock}` : ""}
         </Text>
         <Text
           style={{
