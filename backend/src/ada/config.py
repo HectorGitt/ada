@@ -81,7 +81,12 @@ class Settings(BaseSettings):
 
     # auth (email + password; email used for password-reset links)
     frontend_origin: str = "http://localhost:3000"
-    resend_api_key: str = Field(default="", repr=False)
+    # SMTP delivery (e.g. Namecheap Private Email: mail.privateemail.com, 587
+    # STARTTLS or 465 SSL). Unset credentials = emails are logged, not sent.
+    smtp_host: str = "mail.privateemail.com"
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = Field(default="", repr=False)
     email_from: str = "Ada <auth@ada.local>"
     session_cookie: str = "ada_session"
     # Sliding session window: a session (and its cookie) lasts this long, refreshed on
@@ -160,8 +165,8 @@ class Settings(BaseSettings):
                 missing.append("a fully-configured payment provider (Paystack or Stripe)")
         if self.allowed_origin == "*":
             missing.append("ALLOWED_ORIGIN (wildcard CORS is not allowed in prod)")
-        if not self.resend_api_key:
-            missing.append("RESEND_API_KEY (password-reset email delivery)")
+        if not (self.smtp_username and self.smtp_password):
+            missing.append("SMTP_USERNAME/SMTP_PASSWORD (password-reset email delivery)")
         if self.frontend_origin.startswith("http://localhost"):
             missing.append("FRONTEND_ORIGIN (reset links must point at the real app)")
         if missing:

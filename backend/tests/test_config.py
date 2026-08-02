@@ -22,7 +22,7 @@ def test_prod_ok_with_stripe_only():
         app_env="prod", database_url="x", gcp_project="p",
         allowed_origin="https://ada.example",
         stripe_secret_key="sk", stripe_webhook_secret="wh",
-        resend_api_key="re_x", frontend_origin="https://ada.example",
+        smtp_username="auth@x", smtp_password="pw", frontend_origin="https://ada.example",
     ).validate_runtime()
 
 
@@ -32,7 +32,7 @@ def test_prod_requires_auth_config():
         allowed_origin="https://ada.example",
         stripe_secret_key="sk", stripe_webhook_secret="wh",
     )
-    with pytest.raises(RuntimeError, match="RESEND_API_KEY"):
+    with pytest.raises(RuntimeError, match="SMTP_USERNAME"):
         s.validate_runtime()
 
 
@@ -40,7 +40,7 @@ def test_prod_rejects_wildcard_cors():
     s = Settings(
         app_env="prod", database_url="x", gcp_project="p",
         allowed_origin="*", stripe_secret_key="sk", stripe_webhook_secret="wh",
-        resend_api_key="re_x", frontend_origin="https://ada.example",
+        smtp_username="auth@x", smtp_password="pw", frontend_origin="https://ada.example",
     )
     with pytest.raises(RuntimeError):
         s.validate_runtime()
