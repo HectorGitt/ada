@@ -86,7 +86,7 @@ async def test_inbound_reply_accepts_latest_intro():
             schedule=lambda fn, *a, **k: scheduled.append(fn),
         )
         assert moved is True
-        assert scheduled  # employer notify + connect_parties were queued
+        assert scheduled  # employer + candidate notifies were queued
 
         async with _session_factory() as s:
             row = await s.get(Intro, intro_id)

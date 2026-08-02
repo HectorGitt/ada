@@ -78,12 +78,12 @@ async def recover_stuck_runs() -> int:
 async def create_pending_run(
     *, session_runs: RunRepository, provider: str, amount: int, currency: str,
     email: str, target_role: str, cv_text: str, transcript: str | None = None,
-    user_id: str | None = None,
+    user_id: str | None = None, access_token_hash: str | None = None,
 ) -> Run:
     reference = uuid.uuid4().hex
     run = Run(
         id=reference, reference=reference, provider=provider, amount=amount,
         currency=currency, email=email, target_role=target_role, cv_text=cv_text,
-        transcript=transcript, user_id=user_id,
+        transcript=transcript, user_id=user_id, access_token_hash=access_token_hash,
     )
     return await session_runs.create(run)

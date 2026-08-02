@@ -52,6 +52,10 @@ class Run(Base):
     # Nullable: runs can be created (and paid for) without an account; linked when a
     # session exists at creation time.
     user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    # For guest (unowned) runs: sha256 of a one-time access token returned at creation.
+    # Accessing a guest run needs this token AND the run must be within the guest TTL — the
+    # run id alone is not a sufficient credential. NULL for owned runs (session-authorized).
+    access_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     target_role: Mapped[str] = mapped_column(String(256))
     cv_text: Mapped[str] = mapped_column(Text)
     transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -266,6 +270,17 @@ class Intro(Base):
         String(16), default=IntroStatus.REQUESTED, index=True
     )
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class IntroMessage(Base):
+    """A message in an accepted intro's conversation — the in-app thread that replaces the
+    email hand-off. sender is 'employer' or 'candidate'."""
+    __tablename__ = "intro_messages"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    intro_id: Mapped[str] = mapped_column(ForeignKey("intros.id"), index=True)
+    sender: Mapped[str] = mapped_column(String(16))  # employer | candidate
+    body: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

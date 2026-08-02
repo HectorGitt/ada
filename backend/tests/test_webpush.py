@@ -92,3 +92,15 @@ def test_vapid_header_has_verifiable_es256_signature():
     priv.public_key().verify(
         encode_dss_signature(r, s), f"{h}.{claims}".encode(), ec.ECDSA(hashes.SHA256())
     )
+
+
+async def test_endpoint_is_public_blocks_internal_ssrf_targets():
+    """Dispatch-side SSRF guard: only public HTTPS destinations are allowed."""
+    from ada.services.webpush import endpoint_is_public
+
+    assert await endpoint_is_public("https://127.0.0.1/x") is False           # loopback
+    assert await endpoint_is_public("https://10.0.0.5/x") is False            # private
+    assert await endpoint_is_public("https://192.168.1.1/x") is False         # private
+    assert await endpoint_is_public("https://169.254.169.254/latest") is False  # cloud metadata
+    assert await endpoint_is_public("http://8.8.8.8/x") is False              # not https
+    assert await endpoint_is_public("https://8.8.8.8/x") is True              # public literal IP

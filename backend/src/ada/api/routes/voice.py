@@ -30,6 +30,7 @@ from ada.db.repositories import (
 )
 from ada.db.session import _session_factory
 from ada.observability import log
+from ada.security import origin_allowed
 from ada.services import entitlements
 from ada.services.memory import MemoryService
 from ada.services.voice import Mode, VoiceIntake, format_candidate_context
@@ -93,6 +94,11 @@ async def _can_voice(user_id: str | None) -> bool:
 
 @router.websocket("/voice")
 async def voice(ws: WebSocket) -> None:
+    # Reject cross-site WebSocket hijacking before doing any work (browsers send Origin on
+    # the handshake; a missing Origin is a native/non-browser client and is allowed).
+    if not origin_allowed(ws.headers.get("origin")):
+        await ws.close(code=4403)
+        return
     await ws.accept()
     user_id, context = await _resolve_caller(ws)
     if not await _can_voice(user_id):
@@ -138,10 +144,14 @@ async def voice(ws: WebSocket) -> None:
                     if sc.output_transcription and sc.output_transcription.text:
                         await relay("Ada", sc.output_transcription.text)
 
+            def user_turn(text: str) -> types.Content:
+                # The SDK no longer coerces plain strings into LiveClientContent.
+                return types.Content(role="user", parts=[types.Part(text=text)])
+
             out_task = asyncio.create_task(pump_out())
             # Ada opens the call herself — grounded in context when the caller is known.
             await session.send_client_content(
-                turns="The candidate just joined the call. Greet them and begin.",
+                turns=user_turn("The candidate just joined the call. Greet them and begin."),
                 turn_complete=True,
             )
             while True:
@@ -153,7 +163,9 @@ async def voice(ws: WebSocket) -> None:
                         media=types.Blob(data=pcm, mime_type="audio/pcm;rate=16000")
                     )
                 elif kind == "text":
-                    await session.send_client_content(turns=msg["data"], turn_complete=True)
+                    await session.send_client_content(
+                        turns=user_turn(msg["data"]), turn_complete=True
+                    )
                 elif kind == "end":
                     break
             out_task.cancel()

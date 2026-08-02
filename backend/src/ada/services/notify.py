@@ -5,6 +5,7 @@ centre. Email (Resend) and WhatsApp (Twilio) are side channels: each is attempte
 when configured and never blocks or fails the caller — a dead channel is logged, not
 raised. Notifications are always dispatched in the background off the request path.
 """
+import html
 import uuid
 
 import httpx
@@ -115,42 +116,7 @@ async def _push_all(user_id: str, subscriptions: list, *, title: str, body: str 
         async with _session_factory() as session:
             repo = PushSubscriptionRepository(session)
             for endpoint in dead:
-                await repo.delete(endpoint)
-
-
-async def connect_parties(
-    *,
-    candidate_email: str,
-    candidate_name: str,
-    employer_email: str,
-    company: str,
-    role_title: str,
-) -> None:
-    """Once a candidate accepts, send a warm two-way introduction email to both sides —
-    the handoff that turns an accepted intro into an actual conversation. Best-effort;
-    each side is independent and failures are logged, not raised."""
-    to_candidate = (
-        f"<p>Good news — you accepted <strong>{company}</strong>'s intro for "
-        f"<strong>{role_title}</strong>.</p>"
-        f"<p>You can reach them directly at <a href=\"mailto:{employer_email}\">"
-        f"{employer_email}</a>. Just reply to say hello — they're expecting you.</p>"
-        "<p>— Ada</p>"
-    )
-    to_employer = (
-        f"<p><strong>{candidate_name}</strong> accepted your intro for "
-        f"<strong>{role_title}</strong>.</p>"
-        f"<p>Reach them at <a href=\"mailto:{candidate_email}\">{candidate_email}</a>. "
-        "They've opted in and are happy to talk.</p>"
-        "<p>— Uche</p>"
-    )
-    for to, subject, html in (
-        (candidate_email, f"You're connected with {company}", to_candidate),
-        (employer_email, f"{candidate_name} is ready to talk", to_employer),
-    ):
-        try:
-            await send_email(to, subject, html)
-        except Exception as exc:  # noqa: BLE001 — side channel, never blocks
-            log.warning("connect_email_failed", to=to, error=str(exc))
+                await repo.delete(user_id=user_id, endpoint=endpoint)
 
 
 def _unsub_footer(token: str) -> str:
@@ -171,10 +137,24 @@ def _absolute(link: str | None) -> str | None:
     return get_settings().frontend_base_url.rstrip("/") + link
 
 
+def _safe_href(link: str | None) -> str | None:
+    """Only http(s) or app-relative links may become an href — drops javascript:, data:,
+    and other schemes that could smuggle script or spoof through email."""
+    if not link:
+        return None
+    lowered = link.lower()
+    if lowered.startswith(("https://", "http://")) or link.startswith("/"):
+        return link
+    return None
+
+
 def _email_html(title: str, body: str | None, link: str | None) -> str:
-    parts = [f"<p><strong>{title}</strong></p>"]
+    # title/body can carry user- or admin-derived text (e.g. broadcasts), so escape them;
+    # the href is scheme-validated and attribute-escaped.
+    parts = [f"<p><strong>{html.escape(title)}</strong></p>"]
     if body:
-        parts.append(f"<p>{body}</p>")
-    if link:
-        parts.append(f'<p><a href="{link}">Open in Ada</a></p>')
+        parts.append(f"<p>{html.escape(body)}</p>")
+    href = _safe_href(link)
+    if href:
+        parts.append(f'<p><a href="{html.escape(href, quote=True)}">Open in Ada</a></p>')
     return "".join(parts)

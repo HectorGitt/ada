@@ -25,6 +25,7 @@ from ada.db.models import (
     ChatTurn,
     CompanyProfile,
     Intro,
+    IntroMessage,
     IntroStatus,
     Job,
     Notification,
@@ -1041,9 +1042,13 @@ class PushSubscriptionRepository:
         stmt = select(PushSubscription).where(PushSubscription.user_id == user_id)
         return list((await self._s.execute(stmt)).scalars().all())
 
-    async def delete(self, endpoint: str) -> None:
+    async def delete(self, *, user_id: str, endpoint: str) -> None:
+        # Scoped to the owner (audit #2): knowing an endpoint isn't enough to unsubscribe it.
         await self._s.execute(
-            delete(PushSubscription).where(PushSubscription.endpoint == endpoint)
+            delete(PushSubscription).where(
+                PushSubscription.user_id == user_id,
+                PushSubscription.endpoint == endpoint,
+            )
         )
         await self._s.commit()
 
@@ -1431,3 +1436,25 @@ class ShortlistRepository:
         )
         rows = (await self._s.execute(stmt)).all()
         return {str(stage): count for stage, count in rows}
+
+
+class IntroMessageRepository:
+    """The conversation thread inside an accepted intro."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(self, *, intro_id: str, sender: str, body: str) -> IntroMessage:
+        msg = IntroMessage(intro_id=intro_id, sender=sender, body=body)
+        self._s.add(msg)
+        await self._s.commit()
+        await self._s.refresh(msg)
+        return msg
+
+    async def list_for_intro(self, intro_id: str) -> list[IntroMessage]:
+        stmt = (
+            select(IntroMessage)
+            .where(IntroMessage.intro_id == intro_id)
+            .order_by(IntroMessage.id.asc())
+        )
+        return list((await self._s.execute(stmt)).scalars().all())

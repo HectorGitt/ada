@@ -41,17 +41,9 @@ export default function NewRunScreen() {
         router.replace(`/run/${run.run_id}`);
         return;
       }
-      router.replace({
-        pathname: "/pay",
-        params: {
-          runId: run.run_id,
-          reference: run.reference,
-          publicKey: run.public_key ?? "",
-          amount: String(run.amount ?? 0),
-          currency: run.currency ?? "NGN",
-          email: me.email,
-        },
-      });
+      // Pass only the run id — pay.tsx fetches authoritative checkout data from the
+      // backend, so a spoofed deep link can't inject amount/reference/recipient.
+      router.replace({ pathname: "/pay", params: { runId: run.run_id } });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't start the run.");
       setBusy(false);

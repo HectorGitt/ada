@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     # Voice+camera sessions: face out of frame beyond this (seconds) flags for review.
     verify_face_absent_limit_seconds: int = 25
 
+    # How long a guest (unowned) run stays reachable with its access token.
+    guest_run_ttl_days: int = 7
+
     # matching + interview
     jobs_match_k: int = 5
     interview_questions: int = 5

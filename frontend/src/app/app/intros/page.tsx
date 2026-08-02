@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { Button, Card, EmptyState, PageHeader, Skeleton, StatusBadge } from "@/components/ui";
+import { IntroThread } from "@/components/intro-thread";
 import { api, type CandidateIntro } from "@/lib/api";
 
 const STATUS: Record<string, { label: string; tone: "accent" | "success" | "danger" }> = {
@@ -97,6 +98,14 @@ export default function IntrosPage() {
                           <X className="size-3.5" /> Decline
                         </Button>
                       </div>
+                    )}
+                    {intro.status === "accepted" && (
+                      <IntroThread
+                        introId={intro.id}
+                        me="candidate"
+                        fetchThread={api.candidateIntroThread}
+                        send={api.candidateSendMessage}
+                      />
                     )}
                   </div>
                 </div>

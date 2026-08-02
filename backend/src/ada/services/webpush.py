@@ -8,8 +8,11 @@ The alternative, pywebpush, is a heavy transitive dependency for ~80 lines of we
 crypto; doing it here keeps the deploy self-contained. Correctness is pinned by a round-trip
 decrypt test.
 """
+import asyncio
 import base64
+import ipaddress
 import json
+import socket
 import time
 from urllib.parse import urlsplit
 
@@ -97,12 +100,43 @@ def vapid_auth_header(endpoint: str, *, subject: str, private_key: str, public_k
     return f"vapid t={header}.{claims}.{jws_sig}, k={public_key}"
 
 
+async def endpoint_is_public(endpoint: str) -> bool:
+    """Resolve the endpoint host and require every resolved address to be public — blocks
+    SSRF to loopback, private, link-local (incl. 169.254.169.254 cloud metadata), reserved,
+    or multicast ranges. Re-resolved here at dispatch (not just at registration) to shrink
+    the DNS-rebinding window."""
+    parts = urlsplit(endpoint)
+    host = parts.hostname
+    if parts.scheme != "https" or not host:
+        return False
+    try:
+        infos = await asyncio.to_thread(
+            socket.getaddrinfo, host, parts.port or 443, 0, socket.SOCK_STREAM
+        )
+    except OSError:
+        return False
+    if not infos:
+        return False
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+                or ip.is_multicast or ip.is_unspecified):
+            return False
+    return True
+
+
 async def send_web_push(
     *, endpoint: str, p256dh: str, auth: str, payload: dict, settings: object, ttl: int = 2419200
 ) -> int:
     """Encrypt and POST one push. Returns the HTTP status; 404/410 mean the subscription
     is gone and the caller should drop it. Raises only on transport/crypto errors."""
     import os
+
+    # Defence-in-depth against SSRF: never POST to a non-public destination, even if a
+    # bad endpoint slipped past registration validation.
+    if not await endpoint_is_public(endpoint):
+        log.warning("webpush_blocked_endpoint", host=urlsplit(endpoint).hostname)
+        return 400
 
     salt = os.urandom(16)
     server_private = ec.generate_private_key(_CURVE)

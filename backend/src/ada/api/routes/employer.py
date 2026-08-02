@@ -12,10 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ada.auth.dependencies import current_employer
 from ada.config import get_settings
-from ada.db.models import Job, ShortlistStage, User
+from ada.db.models import Intro, Job, ShortlistStage, User
 from ada.db.repositories import (
     AssessmentRepository,
     CompanyRepository,
+    IntroMessageRepository,
     IntroRepository,
     JobRepository,
     ProfileRepository,
@@ -201,16 +202,8 @@ async def my_intros(
     out = []
     for intro in intros:
         candidate = await profiles.get(intro.candidate_id)
-        accepted = str(intro.status) == "accepted"
-        # Contact is shared only once the candidate accepts — the handoff that turns
-        # an intro into a real conversation, gated by the candidate's own consent.
-        contact = None
-        if accepted:
-            user = await session.get(User, intro.candidate_id)
-            contact = {
-                "email": user.email if user else None,
-                "phone": candidate.phone if candidate else None,
-            }
+        # No raw contact handoff — once accepted, the two sides talk in the in-app thread
+        # (GET/POST /employer/intros/{id}/messages), so the conversation stays on-platform.
         out.append({
             "id": intro.id,
             "job_id": intro.job_id,
@@ -220,9 +213,54 @@ async def my_intros(
             "status": str(intro.status),
             "message": intro.message,
             "created_at": intro.created_at.isoformat(),
-            "contact": contact,
         })
     return out
+
+
+class MessageIn(BaseModel):
+    body: str = Field(min_length=1, max_length=4000)
+
+
+def _messages_out(messages: list) -> list[dict]:
+    return [
+        {"sender": m.sender, "body": m.body, "created_at": m.created_at.isoformat()}
+        for m in messages
+    ]
+
+
+@router.get("/intros/{intro_id}/messages")
+async def intro_thread(
+    intro_id: str,
+    session: AsyncSession = Depends(get_session),
+    employer: User = Depends(current_employer),
+) -> list[dict]:
+    intro = await session.get(Intro, intro_id)
+    if intro is None or intro.employer_id != employer.id:
+        raise HTTPException(404, "Intro not found.")
+    return _messages_out(await IntroMessageRepository(session).list_for_intro(intro_id))
+
+
+@router.post("/intros/{intro_id}/messages", status_code=201)
+async def send_intro_message(
+    intro_id: str,
+    body: MessageIn,
+    background: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+    employer: User = Depends(current_employer),
+) -> dict:
+    intro = await session.get(Intro, intro_id)
+    if intro is None or intro.employer_id != employer.id:
+        raise HTTPException(404, "Intro not found.")
+    if str(intro.status) != "accepted":
+        raise HTTPException(409, "You can message once the candidate accepts the intro.")
+    msg = await IntroMessageRepository(session).add(
+        intro_id=intro_id, sender="employer", body=body.body
+    )
+    background.add_task(
+        notify, intro.candidate_id, kind="intro_message",
+        title="New message from an employer", body=body.body[:200], link="/app/intros",
+    )
+    return {"sender": msg.sender, "body": msg.body, "created_at": msg.created_at.isoformat()}
 
 
 @router.get("/plans")

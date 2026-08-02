@@ -5,12 +5,13 @@ it on first request. `PUT /candidate/discoverable` is the opt-in that lets Uche 
 them to employers — enabling it (re)builds the analysis + search vector.
 """
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ada.auth.dependencies import current_user
 from ada.db.models import Intro, IntroStatus, User
 from ada.db.repositories import (
+    IntroMessageRepository,
     IntroRepository,
     ProfileRepository,
     RunRepository,
@@ -18,6 +19,7 @@ from ada.db.repositories import (
 from ada.db.session import get_session
 from ada.services.insights import refresh_candidate
 from ada.services.intros import respond_to_intro
+from ada.services.notify import notify
 
 router = APIRouter(prefix="/candidate", tags=["candidate"])
 
@@ -109,3 +111,46 @@ async def respond_intro(
     if not moved:
         raise HTTPException(404, "Intro not found or already answered.")
     return {"status": str(status)}
+
+
+class MessageIn(BaseModel):
+    body: str = Field(min_length=1, max_length=4000)
+
+
+@router.get("/intros/{intro_id}/messages")
+async def intro_thread(
+    intro_id: str,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> list[dict]:
+    intro = await session.get(Intro, intro_id)
+    if intro is None or intro.candidate_id != user.id:
+        raise HTTPException(404, "Intro not found.")
+    messages = await IntroMessageRepository(session).list_for_intro(intro_id)
+    return [
+        {"sender": m.sender, "body": m.body, "created_at": m.created_at.isoformat()}
+        for m in messages
+    ]
+
+
+@router.post("/intros/{intro_id}/messages", status_code=201)
+async def send_intro_message(
+    intro_id: str,
+    body: MessageIn,
+    background: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+) -> dict:
+    intro = await session.get(Intro, intro_id)
+    if intro is None or intro.candidate_id != user.id:
+        raise HTTPException(404, "Intro not found.")
+    if str(intro.status) != "accepted":
+        raise HTTPException(409, "Accept the intro before replying.")
+    msg = await IntroMessageRepository(session).add(
+        intro_id=intro_id, sender="candidate", body=body.body
+    )
+    background.add_task(
+        notify, intro.employer_id, kind="intro_message",
+        title="New message from a candidate", body=body.body[:200], link="/hire/intros",
+    )
+    return {"sender": msg.sender, "body": msg.body, "created_at": msg.created_at.isoformat()}

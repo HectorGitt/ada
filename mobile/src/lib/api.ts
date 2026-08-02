@@ -17,6 +17,16 @@ export interface CreateRunOut {
   checkout_url: string | null;
 }
 
+export interface CheckoutOut {
+  provider: "paystack" | "stripe";
+  reference: string;
+  amount: number;
+  currency: string;
+  email: string;
+  public_key: string | null;
+  checkout_url: string | null;
+}
+
 export interface Match {
   title: string;
   company: string;
@@ -141,6 +151,7 @@ export const api = {
     request<CreateRunOut>("/api/runs", { method: "POST", body: JSON.stringify(body) }),
   listRuns: () => request<RunSummary[]>("/api/runs"),
   getRun: (id: string) => request<RunResult>(`/api/runs/${id}`),
+  getRunCheckout: (id: string) => request<CheckoutOut>(`/api/runs/${id}/checkout`),
   scoreInterview: (id: string, answers: string[]) =>
     request<Scorecard>(`/api/runs/${id}/interview`, {
       method: "POST",

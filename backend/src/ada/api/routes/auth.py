@@ -5,8 +5,10 @@ any bad-credential case so it can't be used to probe which emails exist. request
 always returns 202 regardless of whether the email exists, so it can't enumerate
 accounts either. reset consumes its token atomically and revokes existing sessions.
 """
+from typing import Annotated
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import AfterValidator, BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ada.auth.cookies import set_session_cookie
@@ -23,13 +25,21 @@ from ada.services.notify import notify
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# A password long enough to matter; the 72-byte bcrypt cap sets the practical ceiling.
-Password = Field(min_length=8, max_length=200)
+def _bcrypt_safe(password: str) -> str:
+    # bcrypt hashes only the first 72 bytes; reject longer inputs so two passwords sharing
+    # that prefix can't silently authenticate as one (the truncation-aliasing pitfall).
+    if len(password.encode("utf-8")) > 72:
+        raise ValueError("Password must be at most 72 bytes.")
+    return password
+
+
+# A password long enough to matter; the 72-byte bcrypt cap sets the hard ceiling.
+Password = Annotated[str, Field(min_length=8, max_length=200), AfterValidator(_bcrypt_safe)]
 
 
 class SignupIn(BaseModel):
     email: EmailStr
-    password: str = Password
+    password: Password
 
 
 class LoginIn(BaseModel):
@@ -43,7 +53,7 @@ class RequestResetIn(BaseModel):
 
 class ResetIn(BaseModel):
     token: str
-    password: str = Password
+    password: Password
 
 
 def _set_session_cookie(resp: Response, raw: str) -> None:

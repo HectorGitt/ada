@@ -179,7 +179,6 @@ export interface EmployerIntro {
   status: string;
   message: string | null;
   created_at: string;
-  contact: { email: string | null; phone: string | null } | null;
 }
 
 export interface CandidateIntro {
@@ -191,6 +190,12 @@ export interface CandidateIntro {
   company: string;
   location: string;
   remote: boolean;
+}
+
+export interface IntroMessage {
+  sender: "employer" | "candidate";
+  body: string;
+  created_at: string;
 }
 
 // ── employer console ──
@@ -580,6 +585,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ action }),
     }),
+  candidateIntroThread: (introId: string) =>
+    request<IntroMessage[]>(`/api/candidate/intros/${introId}/messages`),
+  candidateSendMessage: (introId: string, body: string) =>
+    request<IntroMessage>(`/api/candidate/intros/${introId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    }),
 
   // employer (Uche)
   postJob: (body: {
@@ -599,6 +611,13 @@ export const api = {
       { method: "POST", body: JSON.stringify({ job_id, candidate_id, message }) },
     ),
   employerIntros: () => request<EmployerIntro[]>("/api/employer/intros"),
+  employerIntroThread: (introId: string) =>
+    request<IntroMessage[]>(`/api/employer/intros/${introId}/messages`),
+  employerSendMessage: (introId: string, body: string) =>
+    request<IntroMessage>(`/api/employer/intros/${introId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    }),
   employerPlans: () => request<Plan[]>("/api/employer/plans"),
   employerPlan: () => request<EmployerPlan>("/api/employer/plan"),
 

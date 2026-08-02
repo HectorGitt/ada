@@ -1,8 +1,10 @@
 """FastAPI app factory. API-only service; the Next.js frontend lives in frontend/."""
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from ada.api.routes import (
     account,
@@ -32,6 +34,9 @@ from ada.api.routes import (
 from ada.config import get_settings
 from ada.db.session import init_db
 from ada.observability import configure_logging
+from ada.security import origin_allowed
+
+_UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 
 @asynccontextmanager
@@ -57,6 +62,19 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def csrf_origin_guard(request: Request, call_next: Callable) -> Response:
+        """Defence-in-depth CSRF beyond SameSite=Lax: a state-changing request carrying an
+        untrusted browser Origin is rejected. Payment/WhatsApp webhooks are exempt (external
+        senders); a missing Origin (native app, server-to-server) is allowed."""
+        if request.method in _UNSAFE_METHODS and not request.url.path.startswith(
+            "/api/webhooks/"
+        ):
+            if not origin_allowed(request.headers.get("origin")):
+                return JSONResponse({"detail": "Cross-origin request blocked."}, status_code=403)
+        return await call_next(request)
+
     app.include_router(health.router, prefix="/api")
     app.include_router(assess.router, prefix="/api")
     app.include_router(auth.router, prefix="/api")
